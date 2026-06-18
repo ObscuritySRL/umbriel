@@ -1,0 +1,33 @@
+# dependencies
+node_modules
+
+# scratch / working dirs — never commit
+/.scratch/
+.claude/
+AGENTS.*.md
+ignore*
+
+# build output
+out
+dist
+*.tgz
+*.tsbuildinfo
+
+# logs / coverage
+logs
+*.log
+coverage
+*.lcov
+
+# dotenv
+.env
+.env.*.local
+.env.local
+
+# caches
+.cache
+
+# editors / OS
+.idea
+.DS_Store
+*.stackdump
