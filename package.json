@@ -29,6 +29,7 @@
     "skry": "./mcp.ts"
   },
   "license": "MIT",
+  "mcpName": "io.github.ObscuritySRL/skry",
   "module": "index.ts",
   "name": "skry",
   "peerDependencies": {

@@ -4,8 +4,7 @@
   "description": "Playwright for the Windows desktop, from Bun — drive native GUIs via UI Automation + MCP.",
   "repository": {
     "url": "https://github.com/ObscuritySRL/skry",
-    "source": "github",
-    "subfolder": "packages/skry"
+    "source": "github"
   },
   "version": "1.9.0",
   "packages": [
