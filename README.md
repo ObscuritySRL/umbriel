@@ -43,20 +43,22 @@ claude mcp add umbriel -- bunx umbriel
 
 Any MCP-speaking agent then drives Windows cursor-free, ~15 ms per step, even on a background, locked, minimized, or occluded window. No mouse hijacking, no screenshots required. It was built by Claude, for Claude, but nothing about it is Claude-specific — any AI over MCP works.
 
-Why it's fast where screenshot agents are slow: frontier computer-use agents ground their actions in screenshots, which the research calls fragile, slow, and token-hungry. Microsoft's UFO2 and the OSWorld-Human benchmark both point to the same fix — read the structure first, vision second. But building that structured snapshot the usual way takes 3–26 seconds and thousands of tokens per step. Umbriel serves it fast and in-process:
+A screenshot agent burns image tokens on every step — then burns them *again* to screenshot its own result, because it can't read state out of pixels. Umbriel maps the whole window to plain text you cache once and reuse across steps, and reads results straight back from that map. Same grounding Microsoft's UFO2 and the OSWorld-Human benchmark recommend (structure first, vision second) — without the bill.
 
 ```ts
 umbriel.tree(app, { agentProfile: true });
 // → one cached round-trip → { role, name, automationId, bounds, children }
 ```
 
-| Operation | Result |
-| --- | --- |
-| Agent-grounding snapshot build | ~13 ms · ~2.95k tokens |
-| Single property read (cross-process) | ~58 µs |
-| vs. OSWorld snapshot build (3–26 s) | ~230–2000× faster |
+> ⚡ Maps a window in **~13 ms** · tokens are **text you cache once and reuse**, not an image re-bought every step · up to **~2000× faster** grounding than a 3–26 s screenshot pipeline
 
-<sub>Measured on Windows 11, Bun 1.4 — reproduce with `bun run example/benchmark.ts`.</sub>
+| Per agent step | Screenshot agent | Umbriel |
+| --- | --- | --- |
+| Tokens | 1.5–2.7k image — then re-shot to self-check | ~3k text — cached & reused across steps |
+| Grounding time | 3–26 s | ~13 ms |
+| Reads state back? | no — must take another screenshot | yes — straight from the snapshot |
+
+<sub>Umbriel figures measured on Windows 11, Bun 1.4 (14.3 ms · ~3k tokens on Calculator; single property read ~58 µs) — reproduce with `bun run example/benchmark.ts`. Screenshot-pipeline figures are published third-party results (OSWorld-Human; computer-use image-token costs).</sub>
 
 The MCP server exposes snapshot-first tools behind a deployer policy you control:
 
@@ -118,25 +120,18 @@ Because Umbriel is plain TypeScript over Bun's own FFI, it:
 
 ## Highlights
 
-🌐 **Reach into Chromium & Electron** — read and drive the in-page web DOM of Chrome, Edge, and every Electron app (Discord, Slack, Spotify, VS Code) as real semantic elements, not pixels — through the same `find` / `invoke` / `waitFor` API as any native control.
-
-📋 **Clipboard done right** — reliable large-text paste with no per-keystroke corruption, plus copy-and-read from any app.
-
-🌑 **Drive in the dark** — `invoke`, `scroll`, `setValue`, and `toggle` move no real cursor and work on windows that are hidden, minimized, occluded, or on a locked session. No focus theft.
-
-🖼️ **Pixel & OCR fallback** — coordinate clicks, full-screen capture, template matching, and text recognition for canvases and games with nothing else to grab onto.
-
-🔎 **Reads everything** — MSAA trees for legacy windows, bounding boxes, data-grid cells, enabled/checked state, native HWND hierarchies (Spy++ style), text, and values.
-
-🌍 **Real Unicode input** — Japanese, Korean, accented Latin, and emoji round-trip correctly through three independent input paths. Proven by a regression test, not promised.
-
-👁️ **See the unseen** — capture the *live* pixels of a window even when it's fully GPU-composited or occluded (Chromium, Edge, Electron, games) via `Windows.Graphics.Capture` — the same surface Alt+Tab previews use.
-
-🎯 **Semantic targeting** — find controls by `automationId`, name, or role. Exact matches are filtered inside the target app for speed; regex and substring match on your side.
-
-🧩 **Works across the stack** — Electron/Chromium, Java, Qt (KDE, OBS, Telegram, VLC), WPF, Win32, WinForms, and WinUI/UWP — each pinned by its own regression test.
-
-⏳ **`waitFor`, the Playwright way** — auto-retry for flaky native UIs, with timeouts that quote the nearest candidates and your selector. No other Windows-desktop npm tool has it.
+| | Capability | What it does |
+| :-: | --- | --- |
+| 🌐 | **Chromium & Electron** | Drive the in-page DOM of Chrome, Edge, and Electron apps (Discord, Slack, Spotify, VS Code) as real elements — same API as native controls. |
+| 📋 | **Clipboard** | Large-text paste with no per-keystroke corruption, plus copy-and-read from any app. |
+| 🌑 | **Drive in the dark** | `invoke` / `scroll` / `setValue` / `toggle` move no cursor — they work on hidden, minimized, occluded, or locked windows. |
+| 🖼️ | **Pixel & OCR fallback** | Coordinate clicks, full-screen capture, template matching, and text recognition for canvases and games. |
+| 🔎 | **Reads everything** | MSAA trees, bounding boxes, data-grid cells, enabled/checked state, native HWND hierarchies, text, and values. |
+| 🌍 | **Real Unicode input** | Japanese, Korean, accented Latin, and emoji round-trip through three input paths — proven by a regression test. |
+| 👁️ | **See the unseen** | Capture the live pixels of a GPU-composited or occluded window via `Windows.Graphics.Capture`. |
+| 🎯 | **Semantic targeting** | Find controls by `automationId`, name, or role — exact matches filtered inside the target app for speed. |
+| 🧩 | **Works across the stack** | Electron/Chromium, Java, Qt, WPF, Win32, WinForms, WinUI/UWP — each pinned by its own regression test. |
+| ⏳ | **`waitFor`** | Playwright-style auto-retry for flaky native UIs, with timeouts that quote the nearest candidates and your selector. |
 
 ## Requirements
 
