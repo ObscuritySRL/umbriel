@@ -21,30 +21,46 @@ skry is pure TypeScript over [`bun:ffi`](https://bun.sh/docs/api/ffi). It does n
 
 ## Repository Layout
 
-skry is a **flat single package** (the repo root *is* the package), not a monorepo.
+skry is a **single package** (the repo root *is* the package), not a monorepo. The source modules are grouped into concern folders — Bun runs `.ts` directly, so there is no `src/` and no build step.
 
 ```
 index.ts            the public surface: `export const skry = { … }` facade + re-exports of every module
 mcp.ts              the stdio MCP server (the `skry` bin); ~3.3k lines, the largest single file
-automation.ts       IUIAutomation lifecycle (initialize/uninitialize/automation/trueCondition)
-element.ts          Element + Window classes (attach, find, act, type, focus, …)
-condition.ts        selector compilation + matching
-constants.ts        ControlType / PatternId / PropertyId / TreeScope / SLOT …
-patterns.ts         UIA control-pattern wrappers (invoke, toggle, scroll, grid, transform, …)
-com.ts reads.ts     COM vtable invoker (vcall), BSTR/VARIANT/HANDLE/RECT decoders
-input.ts coords.ts  synthetic + cursor-free input; DPI-aware coordinate mapping
-screen.ts match.ts marks.ts   capture, image/color matching, set-of-marks overlay
-wgc.ts png.ts       Windows.Graphics.Capture background capture; pure-TS PNG encoder
-ocr.ts              Windows.Media.Ocr text recognition
-refmap.ts tree.ts diff.ts   agent-facing snapshot/grounding tree + structural diff
-events.ts idle.ts desktop.ts window.ts spy.ts   window/event watchers, virtual desktops, Spy++ introspection
-msaa.ts jab.ts      MSAA (oleacc) + Java Access Bridge fallbacks
-cache.ts clipboard.ts computer.ts agent.ts safety.ts   cache requests, clipboard, computer-use adapter, agent loop, redaction/audit
-example/            runnable demos + in-example integration tests (≈200 files)
+
+com/                COM + UIA foundation — the package's spine
+  constants.ts        ControlType / PatternId / PropertyId / TreeScope / SLOT …
+  com.ts reads.ts     COM vtable invoker (vcall); BSTR/VARIANT/HANDLE/RECT decoders
+  automation.ts       IUIAutomation lifecycle (initialize/uninitialize/automation/trueCondition)
+  cache.ts            UIA cache requests
+
+element/            the accessibility tree
+  element.ts          Element + Window classes (attach, find, act, type, focus, …)
+  condition.ts        selector compilation + matching
+  patterns.ts         UIA control-pattern wrappers (invoke, toggle, scroll, grid, transform, …)
+  window.ts tree.ts refmap.ts diff.ts   window model, agent grounding tree, structural diff
+  msaa.ts jab.ts      MSAA (oleacc) + Java Access Bridge fallback trees
+
+input/              synthetic + cursor-free input
+  input.ts coords.ts computer.ts   key/mouse synthesis, DPI-aware coords, computer-use adapter
+
+capture/            pixels + OCR
+  screen.ts match.ts marks.ts   capture, image/color matching, set-of-marks overlay
+  wgc.ts png.ts       Windows.Graphics.Capture background capture; pure-TS PNG encoder
+  ocr.ts              Windows.Media.Ocr text recognition
+
+desktop/            top-level shell
+  events.ts idle.ts desktop.ts spy.ts   window/event watchers, virtual desktops, Spy++ introspection
+
+agent/              LLM-facing
+  agent.ts safety.ts clipboard.ts   agent loop, redaction/audit, clipboard
+
+example/            runnable demos + integration tests (the example *is* the test; ≈200 files)
+test/               fast unit tests (pure-ish; no live desktop) — condition, constants, input, facade, slot-gate, tool-count
+scripts/            repo tooling (release-check.ts — the pre-publish gate)
 AI.md README.md server.json   binding/usage docs + MCP registry manifest
 ```
 
-The single entry object is **`skry`** (`import { skry } from 'skry'`). Classes (`Element`, `Window`), enums, and free functions are also named exports from `index.ts`.
+Cross-folder imports are plain relative paths (`../com/constants`); same-folder stay `./`. The single entry object is **`skry`** (`import { skry } from 'skry'`). Classes (`Element`, `Window`), enums, and free functions are also named exports from `index.ts`. `index.ts` and `mcp.ts` stay at the root (the package entry points + bin).
 
 ---
 
