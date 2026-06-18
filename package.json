@@ -102,6 +102,7 @@
     "bun": ">=1.1.0"
   },
   "scripts": {
+    "release-check": "bun ./scripts/release-check.ts",
     "example:agent-grounding": "bun ./example/agent-grounding.ts",
     "example:agent-loop": "bun ./example/agent-loop.ts",
     "example:attach-by-class": "bun ./example/attach-by-class.integration.test.ts",

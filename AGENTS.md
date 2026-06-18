@@ -129,9 +129,12 @@ skry publishes as the **unscoped `skry`** package and registers a server on the 
 
 ```bash
 bunx tsc --noEmit                    # gate: zero type errors
+bun run scripts/release-check.ts     # gate: version lockstep + @bun-win32/* deps published on npm
 bun publish --access public --otp <code>   # unscoped, but pass --access public explicitly
-# MCP registry: bump server.json version to match, then publish with mcp-publisher
+# MCP registry: keep server.json version in lockstep, then publish with mcp-publisher
 ```
+
+`scripts/release-check.ts` is the standalone release gate (adapted from the monorepo's `published-deps.ts`): it fails if `package.json`, `server.json`, and `mcp.ts` `SERVER_INFO.version` disagree, or if any pinned `@bun-win32/*` dependency version is not actually on npm.
 
 - **Always `bun publish`, never `npm publish`.**
 - **Pin `@bun-win32/*` deps to published versions** (caret ranges). Never reintroduce `workspace:*` — this repo has no workspace.
