@@ -134,6 +134,7 @@
     "example:qt-widget-tree": "bun ./example/qt-widget-tree.integration.test.ts",
     "example:read-control-text-fenced-redacted": "bun ./example/read-control-text-fenced-redacted.integration.test.ts",
     "example:read-table": "bun ./example/read-table.integration.test.ts",
+    "example:read-table-paging": "bun ./example/read-table-paging.integration.test.ts",
     "example:reveal-offscreen": "bun ./example/reveal-offscreen.integration.test.ts",
     "example:safety-floor": "bun ./example/safety-floor.integration.test.ts",
     "example:select-option": "bun ./example/select-option.integration.test.ts",

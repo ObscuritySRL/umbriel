@@ -1380,8 +1380,15 @@ function renderTable(table: TableData): string {
       .replace(/[\r\n]+/g, ' '); // table cells are on-screen content — mask secret shapes, same as every other read path
   const lines = [`| ${headers.map(escape).join(' | ')} |`, `| ${headers.map(() => '---').join(' | ')} |`];
   for (const row of table.rows) lines.push(`| ${Array.from({ length: width }, (_unused, index) => escape(row[index] ?? '')).join(' | ')} |`);
-  const hidden = table.totalRows - table.rows.length;
-  return hidden > 0 ? `${lines.join('\n')}\n…(${hidden} more rows — raise maxRows)` : lines.join('\n');
+  const end = table.startRow + table.rows.length; // exclusive end of this page
+  const more = table.totalRows - end; // rows after this page
+  const footer =
+    more > 0
+      ? `\n…(rows ${table.startRow + 1}–${end} of ${table.totalRows}; ${more} more — next page with startRow:${end})`
+      : table.startRow > 0
+        ? `\n…(rows ${table.startRow + 1}–${end} of ${table.totalRows})`
+        : ''; // a top-anchored full read keeps the no-footer behavior
+  return `${lines.join('\n')}${footer}`;
 }
 
 /** Resolve a file-tool path, enforcing the UMBRIEL_FS_ROOT sandbox when one is set. A purely lexical prefix check
@@ -1758,8 +1765,8 @@ const TOOLS: McpTool[] = [
     name: 'read_table',
     category: 'read',
     description:
-      'Read a data grid / list / table (Explorer details view, a DataGrid, a spreadsheet-like control) as structured rows — UIA GridPattern cell-by-cell, with column headers when available. Target a ref from the latest snapshot (the List/DataGrid/Table node). Returns a markdown table; far cheaper and more reliable than reading cells from a screenshot. To ACT on one cell (edit/toggle/invoke/select it), use grid_cell {ref, row, column, do}.',
-    inputSchema: { type: 'object', properties: { ref: { type: 'string', description: REF_DESC }, maxRows: { type: 'number', description: 'Cap rows read (default 100)' } }, required: ['ref'] },
+      'Read a data grid / list / table (Explorer details view, a DataGrid, a spreadsheet-like control) as structured rows — UIA GridPattern cell-by-cell, with column headers when available. Target a ref from the latest snapshot (the List/DataGrid/Table node). Returns a markdown table; far cheaper and more reliable than reading cells from a screenshot. For a grid bigger than maxRows, PAGE forward with startRow (the footer names the next startRow) instead of re-reading from the top. To ACT on one cell (edit/toggle/invoke/select it), use grid_cell {ref, row, column, do}.',
+    inputSchema: { type: 'object', properties: { ref: { type: 'string', description: REF_DESC }, maxRows: { type: 'number', description: 'Rows to read in this page (default 100)' }, startRow: { type: 'number', description: '0-based row to start the page at (default 0) — page a big grid forward without re-reading from row 0.' } }, required: ['ref'] },
   },
   {
     name: 'grid_cell',
@@ -2707,7 +2714,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     return textResult(lines.join('\n'));
   },
   read_table: (args) => {
-    const table = resolveRef(requireString(args, 'ref')).readTable(typeof args.maxRows === 'number' ? args.maxRows : undefined);
+    const table = resolveRef(requireString(args, 'ref')).readTable(typeof args.maxRows === 'number' ? args.maxRows : undefined, typeof args.startRow === 'number' ? args.startRow : undefined);
     return textResult(table === null ? '(no table at this ref — it does not expose the UIA Grid pattern; try a different ref, e.g. the List/DataGrid node)' : fenceUntrusted(renderTable(table), 'on-screen text'));
   },
   grid_cell: (args) => {

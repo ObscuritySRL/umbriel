@@ -457,6 +457,7 @@ export interface TableData {
   headers: string[];
   rows: string[][];
   totalRows: number;
+  startRow: number; // 0-based offset the returned rows begin at (for paging a big grid forward without re-reading from the top)
 }
 
 /** Collect every element pointer in an IUIAutomationElementArray (caller owns + releases each). */
@@ -525,18 +526,19 @@ const MAX_TABLE_COLUMNS = 4096; // safety bound for readTable's per-row column l
  * grid with no ValuePattern (WinForms DataGridView) falls back to the Name, and then only when the Name is not just
  * the column-header label. That fixes both the Explorer-Details header inversion and the Excel address-not-value bug.
  */
-export function readTable(ptr: bigint, maxRows = 100): TableData | null {
+export function readTable(ptr: bigint, maxRows = 100, startRow = 0): TableData | null {
   const grid = getPattern(ptr, PatternId.Grid);
   if (grid === 0n) return null;
   try {
     const totalRows = getLong(grid, SLOT.get_CurrentRowCount);
     const columnCount = getLong(grid, SLOT.get_CurrentColumnCount);
-    const limit = Math.min(Math.max(totalRows, 0), Math.max(maxRows, 0));
+    const start = Math.min(Math.max(Math.trunc(startRow), 0), Math.max(totalRows, 0)); // page offset, clamped into [0, totalRows]
+    const limit = Math.min(Math.max(maxRows, 0), Math.max(totalRows - start, 0)); // rows to read starting at `start`
     const columns = Math.min(Math.max(columnCount, 0), MAX_TABLE_COLUMNS); // clamp a hostile/buggy provider's column count (mirrors the row clamp); no real grid exceeds this, but an unbounded count would mean a multi-GB alloc + billions of GetItem round-trips per row
     const headers = columnHeaders(ptr); // computed once — also the per-cell header-label comparison below
     const rows: string[][] = [];
     const cellOut = Buffer.alloc(8);
-    for (let row = 0; row < limit; row += 1) {
+    for (let row = start; row < start + limit; row += 1) {
       const cells: string[] = new Array(columns);
       for (let column = 0; column < columns; column += 1) {
         cells[column] = '';
@@ -558,7 +560,7 @@ export function readTable(ptr: bigint, maxRows = 100): TableData | null {
       }
       rows.push(cells);
     }
-    return { headers, rows, totalRows };
+    return { headers, rows, totalRows, startRow: start };
   } finally {
     comRelease(grid);
   }
