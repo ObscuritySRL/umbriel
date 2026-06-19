@@ -58,9 +58,16 @@ function assert(condition: boolean, message: string): void {
 }
 
 const EM_SETMODIFY = 0x00b9;
+// A fresh desktop_snapshot after a VALUE change (type/cut) returns a compact Δ / "no UI change" that omits the
+// editor's [ref=] line; refs survive value deltas (only a re-render bumps the #generation), so cache the last
+// resolved ref and fall back to it — else editRef() returns undefined and copy/cut run with NO ref, taking the
+// SendInput Ctrl+C/X "no selection" path instead of the ref-gated cursor-free WM_COPY/WM_CUT path.
+let lastEditRef: string | undefined;
 const editRef = async (): Promise<string | undefined> => {
   const snap = textOf(await call('tools/call', { name: 'desktop_snapshot', arguments: {} }));
-  return /(?:Document|Edit|Text)[^\n]*?\[ref=(e\d+(?:#\d+)?)\]/i.exec(snap)?.[1];
+  const found = /(?:Document|Edit|Text)[^\n]*?\[ref=(e\d+(?:#\d+)?)\]/i.exec(snap)?.[1];
+  if (found !== undefined) lastEditRef = found;
+  return found ?? lastEditRef;
 };
 
 umbriel.initialize();
