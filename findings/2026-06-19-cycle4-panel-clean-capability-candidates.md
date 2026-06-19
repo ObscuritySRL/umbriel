@@ -16,6 +16,10 @@ documented, NOT built autonomously.
   or misdirecting errors. No surgical message/doc fix found.
 - **Code-hygiene (direct):** `bunx tsc --noEmit` exit 0; `bunx biome format .` exit 0 (no tracked source would
   change). Clean.
+- **Segfault-safety / slot coverage (direct):** re-ran `slot-gate.test.ts` — 104 UIA + 22 WGC/MSAA/D3D11 + 18
+  OCR = 144 vtable slots verified against the SDK headers, **0 not-in-header, 0 mismatched**, with the two-way
+  drift guard green (every called slot gated, every gated slot called); 16 pass / 0 fail. The goal's "extend
+  slot-gate" mandate is already satisfied — every SLOT entry is verified; there is no uncovered slot to add.
 
 ## Owner-decision capability candidates (Panel B — flagged, NOT built)
 
