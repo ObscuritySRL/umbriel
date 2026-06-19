@@ -77,9 +77,17 @@ try {
     await Bun.sleep(300);
     // Re-resolve the Document/Edit ref from a FRESH snapshot each time — every mutating tool returns a re-grounding
     // that can renumber refs, so a ref is valid only for the latest snapshot (the test exercises that contract too).
+    // A fresh desktop_snapshot after a VALUE change (typing/pasting) comes back as a compact Δ / "no UI change"
+    // that omits the editor's [ref=] line — but a value delta does NOT renumber refs (only a re-render bumps the
+    // #generation; the Δ even says "other refs unchanged"), so the prior ref stays valid. Cache the last resolved
+    // ref and fall back to it when a delta omits it, instead of returning undefined (which made the type/paste
+    // read-backs spuriously fail even though the WM_CHAR/WM_PASTE landed — proven via .scratch/probe-notepad-mcp).
+    let lastEditRef: string | undefined;
     const currentEditRef = async (): Promise<string | undefined> => {
       const snap = textOf(await call('tools/call', { name: 'desktop_snapshot', arguments: {} }));
-      return /(?:Document|Edit|Text)[^\n]*?\[ref=(e\d+(?:#\d+)?)\]/i.exec(snap)?.[1];
+      const found = /(?:Document|Edit|Text)[^\n]*?\[ref=(e\d+(?:#\d+)?)\]/i.exec(snap)?.[1];
+      if (found !== undefined) lastEditRef = found;
+      return found ?? lastEditRef;
     };
     const valueOf = async (): Promise<string> => {
       const ref = await currentEditRef();
