@@ -132,7 +132,10 @@ export function writeClipboardFiles(paths: readonly string[], move = false): boo
     if (effectHandle !== 0n) {
       const formatName = Buffer.from('Preferred DropEffect\0', 'utf16le'); // named local: keep it alive across the FFI call
       const dropEffect = User32.RegisterClipboardFormatW(formatName.ptr!);
-      if (dropEffect === 0 || User32.SetClipboardData(dropEffect, effectHandle) === 0n) Kernel32.GlobalFree(effectHandle);
+      if (dropEffect === 0 || User32.SetClipboardData(dropEffect, effectHandle) === 0n) {
+        Kernel32.GlobalFree(effectHandle); // the requested MOVE effect could not be staged — report it (don't return a false COPY-as-MOVE success); the CF_HDROP is already system-owned
+        return false;
+      }
     }
     return true; // on success the system owns the handle(s) — do not free them
   } finally {
