@@ -47,7 +47,7 @@ try {
   // (C) end-to-end catchability: the same call in a child process. A segfault cannot be caught and would exit
   //     non-zero; a thrown Error is caught and the child exits 0.
   const child = `
-import { vcall } from ${JSON.stringify(`${import.meta.dir}/../com.ts`)};
+import { vcall } from ${JSON.stringify(`${import.meta.dir}/../com/com.ts`)};
 const buf = Buffer.alloc(16);
 try { vcall(BigInt(buf.ptr), 2, [], []); console.log('NO_THROW'); }
 catch (e) { console.log('CAUGHT'); process.exit(0); }
