@@ -24,6 +24,7 @@ import {
   cloakReason,
   closeWindow,
   controlService,
+  listScheduledTasks,
   listServices,
   getDisplays,
   getEnv,
@@ -2139,6 +2140,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'list_scheduled_tasks',
+    category: 'read',
+    description: 'List Windows scheduled tasks natively (no schtasks/Get-ScheduledTask shell) — THE #1 autorun/persistence surface: what runs on a schedule or at logon, when each last ran (+ its result code) and runs next, and whether it is enabled. Recursively walks every task folder; hidden tasks included. Optional {folder} prefix filter (e.g. "\\\\Microsoft\\\\Windows") and {enabledOnly}.',
+    inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Only tasks whose folder path starts with this prefix (e.g. "\\\\Microsoft")' }, enabledOnly: { type: 'boolean', description: 'Only enabled tasks' } } },
+  },
+  {
     name: 'control_service',
     category: 'os',
     description: 'Query / start / stop a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state / denied / not-found. Gated behind the "os" policy category; destructive on start/stop.',
@@ -3521,6 +3528,14 @@ const HANDLERS: Record<string, ToolHandler> = {
     const services = listServices();
     if (services.length === 0) return errorResult('list_services: could not enumerate services (the SCM refused enumerate access)');
     return textResult(`${services.length} services:\n${services.map((entry) => `  ${entry.state.padEnd(15)} ${entry.name}${entry.displayName && entry.displayName !== entry.name ? ` — ${entry.displayName}` : ''}`).join('\n')}`);
+  },
+  list_scheduled_tasks: (args) => {
+    const folderFilter = typeof args.folder === 'string' ? args.folder.toLowerCase() : '';
+    let tasks = listScheduledTasks();
+    if (folderFilter !== '') tasks = tasks.filter((task) => task.path.toLowerCase().startsWith(folderFilter));
+    if (args.enabledOnly === true) tasks = tasks.filter((task) => task.enabled);
+    if (tasks.length === 0) return errorResult(`list_scheduled_tasks: no tasks${folderFilter !== '' ? ` under "${args.folder}"` : ''} (or the Task Scheduler service is unreachable)`);
+    return textResult(`${tasks.length} scheduled tasks:\n${tasks.map((task) => `${task.enabled ? '' : '[disabled] '}${task.path}\\${task.name} — ${task.state}, last ${task.lastRun || 'never'} (${task.lastResult}), next ${task.nextRun || '—'}`).join('\n')}`);
   },
   control_service: (args) => {
     const name = requireString(args, 'name');

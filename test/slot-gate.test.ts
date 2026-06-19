@@ -10,7 +10,7 @@ import { describe, expect, test } from 'bun:test';
 import { FFIType } from 'bun:ffi';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
-import { automation, compileCondition, root, trueCondition, uninitialize, Window } from '../index';
+import { automation, compileCondition, root, TASK_SLOT, trueCondition, uninitialize, Window } from '../index';
 import { comRelease, invokerCacheSize, vcall } from '../com/com';
 import { SLOT } from '../com/constants';
 
@@ -534,5 +534,35 @@ describe('native-memory safety: Element.release() / Window.dispose() idempotency
   test('vcall on a literal-null (0n) thisPtr throws catchably — the guard covers ONLY the null case, not unmapped pointers', () => {
     expect(() => vcall(0n, SLOT.GetRootElement, [FFIType.ptr], [Buffer.alloc(8).ptr!])).toThrow('null interface pointer');
     expect(() => comRelease(0n)).not.toThrow(); // comRelease(0n) is a documented no-op (never reaches the deref)
+  });
+});
+
+// desktop/tasks.ts drives the Task Scheduler COM tree (ITaskService→ITaskFolder→IRegisteredTask) through TASK_SLOT via
+// the same vcall as UIA — a wrong slot SEGFAULTS. taskschd.h's MIDL `*Vtbl` structs are the authoritative declaration
+// order; this gates every TASK_SLOT entry against them. The trap it pins: IRegisteredTask::Enabled is get+PUT, and a
+// get+put property consumes TWO vtable slots, so put_Enabled@11 shifts get_LastRunTime to 15 (not 14), LastTaskResult
+// to 16, NextRunTime to 18 — the exact off-by-one that live verification caught.
+describe('Task Scheduler SLOT table ↔ taskschd.h (tasks.ts)', () => {
+  const header = sdkHeader('um', 'taskschd.h');
+  test.skipIf(header === null)('every TASK_SLOT matches the taskschd.h vtbl declaration order', () => {
+    const scoped = parseScopedVtableSlots(readFileSync(header!, 'utf8'));
+    const taskService = findInterface(scoped, 'ITaskService');
+    const taskFolder = findInterface(scoped, 'ITaskFolder');
+    const registeredTask = findInterface(scoped, 'IRegisteredTask');
+    const collection = findInterface(scoped, 'IRegisteredTaskCollection');
+    expect(taskService?.get('GetFolder')).toBe(TASK_SLOT.ITaskService_GetFolder);
+    expect(taskService?.get('Connect')).toBe(TASK_SLOT.ITaskService_Connect);
+    expect(taskFolder?.get('get_Path')).toBe(TASK_SLOT.ITaskFolder_get_Path);
+    expect(taskFolder?.get('GetFolders')).toBe(TASK_SLOT.ITaskFolder_GetFolders);
+    expect(taskFolder?.get('GetTasks')).toBe(TASK_SLOT.ITaskFolder_GetTasks);
+    expect(collection?.get('get_Count')).toBe(TASK_SLOT.Collection_get_Count);
+    expect(collection?.get('get_Item')).toBe(TASK_SLOT.Collection_get_Item);
+    expect(registeredTask?.get('get_Name')).toBe(TASK_SLOT.IRegisteredTask_get_Name);
+    expect(registeredTask?.get('get_State')).toBe(TASK_SLOT.IRegisteredTask_get_State);
+    expect(registeredTask?.get('get_Enabled')).toBe(TASK_SLOT.IRegisteredTask_get_Enabled);
+    expect(registeredTask?.get('put_Enabled')).toBe(11); // the shift cause — present at 11, pushing the getters below it down by one
+    expect(registeredTask?.get('get_LastRunTime')).toBe(TASK_SLOT.IRegisteredTask_get_LastRunTime);
+    expect(registeredTask?.get('get_LastTaskResult')).toBe(TASK_SLOT.IRegisteredTask_get_LastTaskResult);
+    expect(registeredTask?.get('get_NextRunTime')).toBe(TASK_SLOT.IRegisteredTask_get_NextRunTime);
   });
 });
