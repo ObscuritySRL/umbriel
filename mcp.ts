@@ -477,7 +477,14 @@ function attachByTitle(title: string, className: string | undefined): Window {
   const substring = all.filter((window) => window.title.length > 0 && window.title.toLowerCase().includes(lower));
   if (substring.length > 1) throw new Error(`${substring.length} visible windows have a title CONTAINING ${JSON.stringify(title)} — attach by hWnd to pick one:\n${candidates(substring)}`);
   if (substring.length === 1) return umbriel.attach(substring[0]!.hWnd);
-  return umbriel.attach({ title, ...(className !== undefined ? { className } : {}) }); // EnumWindows-miss fallback (matches the library's first-match semantics)
+  // No exact and no substring match. If EnumWindows enumerated NOTHING, fall back to the library's FindWindowW (the
+  // intermittent Shell_TrayWnd-miss). Otherwise windows WERE enumerated but none matched the title — steer to
+  // list_windows and LIST them (titles are the most-guessed/volatile attach key), the way every sibling attach error
+  // does, instead of the library's bare "no window found for {…}" that just echoes the agent's own JSON.
+  if (all.length === 0) return umbriel.attach({ title, ...(className !== undefined ? { className } : {}) });
+  throw new Error(
+    `no visible window has${className !== undefined ? ` class ${JSON.stringify(className)} and` : ''} title ${JSON.stringify(title)} (exact or substring) — call list_windows and attach by hWnd. Visible windows:\n${candidates(all.slice(0, 20))}${all.length > 20 ? `\n  … +${all.length - 20} more (list_windows for all)` : ''}`,
+  );
 }
 
 /** Pick a window by owning processId, disambiguating MANY top-level windows of that process with their hWnds rather
