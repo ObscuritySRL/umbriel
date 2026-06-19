@@ -63,10 +63,39 @@ snapshot instead. (Benchmarks: .scratch/bench-resources.ts, bench-fs.ts, probe-k
    process via process.env + SetEnvironmentVariableW. Verified live (USER set→read→delete roundtrip, machine denied).
    Fixed a consistency bug found live (process read via Bun.env vs write via SetEnvironmentVariableW = different views).
 
-**Panel-B queue COMPLETE — all 5 shipped.** Remaining OPTIONAL follow-ups (not yet built): a general `registry_set`
-MCP tool (the scoped write primitives exist + are proven; exposing arbitrary registry write needs a deliberate security
-pass), and `process_info` (read companion: GetProcessTimes/handle/working-set + parent→child tree). Next Panel-B sweep
-should hunt for NEW gaps beyond this queue (e.g. scheduled tasks, event log, network adapters, clipboard history).
+**Panel-B queue COMPLETE — all 5 shipped.**
+
+## Round 2 — fresh panels on the new code (both spawned same turn)
+
+**Panel-A critic on the new OS-control code** (registry/services/env/manage_process/stat_path): 3 seats clean
+(segfault-safety, fabrication, ergonomics-hygiene), 3 CONFIRMED + FIXED:
+- MEDIUM security (327a1ba) — set_env/get_env/registry_get echoed the VALUE on result line 1, which traceCall journals;
+  a secret env/registry value leaked into the UMBRIEL_TRACE journal. Fixed: value on line 2 (off the line-1 sample),
+  set_env doesn't echo it, + redactSecrets() on the observation. Regression test trace-redaction.
+- MEDIUM (d86351a) — registryList corrupted any value > 16KB (reused buffer; on ERROR_MORE_DATA the name + lpcchValueName
+  are stale, so the over-cap value got the PRIOR name + NUL padding and its real name was lost; get_env machine reads
+  HKLM Path which is commonly > 16KB). Fixed: re-query name+type only on MORE_DATA, mark oversized. Test registry-large-value.
+- LOW (43f491c) — AI.md omitted the 6 new library exports + 3 source files. Fixed.
+
+**Panel-B capability hunt for NEW gaps** (all 5 buildable NOW on current deps, 0 need a new binding except network):
+1. **process_info** (read) — SHIPPED (0d2d106). value 9.5: deep per-pid detail (start/CPU/memory/handles + parent/child
+   tree) so kill/suspend/priority are TARGETED not blind. kernel32, proven live.
+2. **read_event_log** (read, value 8) — advapi32 LEGACY OpenEventLogW/ReadEventLogW/CloseEventLog (a current dep; the
+   modern wevtapi is NOT). Decode EVENTLOGRECORD by hand (Length@0, RecordNumber@8, TimeGenerated@12, EventID@20,
+   EventType u16@24, SourceName@56). Proven live (decoded real System-log records). The crash/failure diagnosis blind
+   spot. **Build next.**
+3. **get_displays** (read, value 7) — user32 EnumDisplayDevicesW/EnumDisplaySettingsW; DEVMODEW tail anchored to dmSize
+   (bpp@dmSize-20, width@-16, height@-12, freq@-4). Proven live (5120x1440@240). Resolution/refresh/topology for
+   capture+placement.
+4. **registry_set** (os, value 6.5) — DEFER: generalizes the proven scoped write primitives, but arbitrary HKLM/HKCU
+   write is the most destructive surface; needs confirm-flag + per-type validation + careful review. Build after the reads.
+5. **list_scheduled_tasks** (read, value 7) — OWNER-DECISION: buildable on combase + umbriel's OWN vcall/guid COM
+   machinery (CLSID_TaskScheduler, no taskschd pkg needed), but hand-driving ITaskService via raw vtable slots is the
+   highest segfault risk. The #1 autorun/persistence vector. Owner decides whether to invest the COM work.
+- **network (list_adapters/list_connections) — BLOCKED:** no iphlpapi/ws2_32 in ANY installed @bun-win32 binding
+  (verified). Genuinely needs a NEW @bun-win32/iphlpapi dependency — an owner decision (new dep + attack surface).
+
+Sequencing: read_event_log → get_displays → (registry_set with security pass) → (list_scheduled_tasks if owner opts in).
 
 ## Owner-reserved (flagged, NOT fixed)
 
