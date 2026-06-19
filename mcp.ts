@@ -1983,8 +1983,8 @@ const TOOLS: McpTool[] = [
     name: 'copy_files',
     category: 'input',
     description:
-      'Put file paths on the clipboard as a file drop (CF_HDROP), cursor-free — so you can paste them (Ctrl+V) into Explorer or any drop target to copy/move the files, exactly like Ctrl+C on files in Explorer. Pass absolute backslash paths. Does not access the files or paste; it only sets the clipboard.',
-    inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths (backslash form)' } }, required: ['paths'] },
+      'Put file paths on the clipboard as a file drop (CF_HDROP), cursor-free — so you can paste them (Ctrl+V) into Explorer or any drop target. Defaults to COPY (like Ctrl+C in Explorer); pass {move:true} to MOVE them instead (like Ctrl+X — the source is removed on paste). Pass absolute backslash paths. Does not access the files or paste; it only sets the clipboard.',
+    inputSchema: { type: 'object', properties: { paths: { type: 'array', items: { type: 'string' }, description: 'Absolute file paths (backslash form)' }, move: { type: 'boolean', description: 'Set the drop effect to MOVE (Ctrl+X) instead of the default COPY (Ctrl+C) — the source is removed when pasted into Explorer.' } }, required: ['paths'] },
   },
   {
     name: 'paste',
@@ -3077,8 +3077,9 @@ const HANDLERS: Record<string, ToolHandler> = {
   copy_files: (args) => {
     const paths = Array.isArray(args.paths) ? args.paths.filter((path): path is string => typeof path === 'string') : [];
     if (paths.length === 0) return errorResult('copy_files: provide a non-empty {paths} array of absolute file paths');
-    return umbriel.writeClipboardFiles(paths)
-      ? textResult(`copied ${paths.length} file path${paths.length > 1 ? 's' : ''} to the clipboard (CF_HDROP) — paste (Ctrl+V) into Explorer or a drop target to copy/move them`)
+    const move = args.move === true;
+    return umbriel.writeClipboardFiles(paths, move)
+      ? textResult(`staged ${paths.length} file path${paths.length > 1 ? 's' : ''} on the clipboard (CF_HDROP, ${move ? 'MOVE' : 'COPY'}) — paste (Ctrl+V) into Explorer or a drop target to ${move ? 'MOVE them (the source is removed)' : 'copy them'}`)
       : errorResult('copy_files: could not set the clipboard file drop');
   },
   paste: (args) => {

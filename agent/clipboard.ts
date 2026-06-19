@@ -15,6 +15,7 @@ const CF_DIB = 8;
 const CF_HDROP = 15;
 const CF_UNICODETEXT = 13;
 const GMEM_MOVEABLE = 0x0002;
+const DROPEFFECT_MOVE = 2; // "Preferred DropEffect" value that makes Explorer's Ctrl+V / drop MOVE the files (a bare CF_HDROP defaults to COPY)
 
 /** The clipboard's change counter (User32.GetClipboardSequenceNumber) — bumps on every clipboard write. Compare it
  *  before/after a posted WM_COPY/WM_CUT to tell whether the control actually copied (the counter changed) or the
@@ -74,8 +75,10 @@ export function readClipboardFiles(): readonly string[] {
 
 /** Put file paths on the clipboard as CF_HDROP (a DROPFILES drop) — the inverse of readClipboardFiles, so an agent can
  *  "copy" files for an Explorer (or any drop-target) Ctrl+V/paste, exactly like a human's Ctrl+C in Explorer. Pass real
- *  backslash paths. Returns true on success; false for an empty list. Zero new bindings. */
-export function writeClipboardFiles(paths: readonly string[]): boolean {
+ *  backslash paths. With `move = true` it also stages a "Preferred DropEffect" = DROPEFFECT_MOVE so the paste MOVES the
+ *  files (like Ctrl+X) instead of copying — a bare CF_HDROP defaults to COPY, leaving the source behind. Returns true on
+ *  success; false for an empty list. Zero new bindings. */
+export function writeClipboardFiles(paths: readonly string[], move = false): boolean {
   if (paths.length === 0) return false;
   // DROPFILES (x64): DWORD pFiles@0 (offset to the list = 20), POINT pt@4 (8B), BOOL fNC@12, BOOL fWide@16 (=1, wide);
   // then a double-NUL-terminated UTF-16LE path list.
@@ -93,17 +96,45 @@ export function writeClipboardFiles(paths: readonly string[]): boolean {
   }
   new Uint8Array(toArrayBuffer(pointer, 0, blob.length)).set(blob);
   Kernel32.GlobalUnlock(handle);
+  // For a MOVE, stage a 4-byte "Preferred DropEffect" = DROPEFFECT_MOVE block (exactly what Explorer's Cut writes).
+  // Built before OpenClipboard, same as the HDROP block. NULL handle is 0n.
+  let effectHandle = 0n;
+  if (move) {
+    const effect = Buffer.alloc(4);
+    effect.writeUInt32LE(DROPEFFECT_MOVE, 0);
+    effectHandle = Kernel32.GlobalAlloc(GMEM_MOVEABLE, BigInt(effect.length));
+    if (effectHandle === 0n) {
+      Kernel32.GlobalFree(handle);
+      return false;
+    }
+    const effectPointer = Kernel32.GlobalLock(effectHandle);
+    if (effectPointer === null) {
+      Kernel32.GlobalFree(handle);
+      Kernel32.GlobalFree(effectHandle);
+      return false;
+    }
+    new Uint8Array(toArrayBuffer(effectPointer, 0, effect.length)).set(effect);
+    Kernel32.GlobalUnlock(effectHandle);
+  }
   if (User32.OpenClipboard(0n) === 0) {
     Kernel32.GlobalFree(handle);
+    if (effectHandle !== 0n) Kernel32.GlobalFree(effectHandle);
     return false;
   }
   try {
     User32.EmptyClipboard();
     if (User32.SetClipboardData(CF_HDROP, handle) === 0n) {
       Kernel32.GlobalFree(handle); // ownership not transferred on failure
+      if (effectHandle !== 0n) Kernel32.GlobalFree(effectHandle);
       return false;
     }
-    return true; // on success the system owns `handle` — do not free it
+    // CF_HDROP is now owned by the system. Stage the move effect; on SetClipboardData success the system owns it too.
+    if (effectHandle !== 0n) {
+      const formatName = Buffer.from('Preferred DropEffect\0', 'utf16le'); // named local: keep it alive across the FFI call
+      const dropEffect = User32.RegisterClipboardFormatW(formatName.ptr!);
+      if (dropEffect === 0 || User32.SetClipboardData(dropEffect, effectHandle) === 0n) Kernel32.GlobalFree(effectHandle);
+    }
+    return true; // on success the system owns the handle(s) — do not free them
   } finally {
     User32.CloseClipboard();
   }
