@@ -69,10 +69,15 @@ try {
   const empty = await call('tools/call', { name: 'find_and_act', arguments: { do: 'read', selector: {} } });
   assert(empty.result?.isError === true && /empty selector/.test(textOf(empty)), 'a genuinely empty selector still refuses with the empty-selector error');
 
-  // An UNKNOWN selector key (the common role/label/id alias mistake) must be REJECTED with the alias map, not
-  // silently dropped onto the wrong control with a confident success.
-  const alias = await call('tools/call', { name: 'find_and_act', arguments: { do: 'read', selector: { role: 'Button', label: 'Start' } } });
-  assert(alias.result?.isError === true && /unknown selector key/.test(textOf(alias)) && /role\/type → controlType/.test(textOf(alias)), 'an unknown selector key (role/label) is rejected with the alias map, not silently dropped');
+  // role / label / id / type are ACCEPTED aliases (folded onto controlType / name / automationId — see SELECTOR_ALIASES
+  // and the tool description) — they must NOT be rejected as unknown keys.
+  const aliasFolded = await call('tools/call', { name: 'find_and_act', arguments: { do: 'read', selector: { role: 'Button' } } });
+  assert(!/unknown selector key/.test(textOf(aliasFolded)), 'role/label/id/type are ACCEPTED aliases (folded onto controlType/name/automationId), not rejected as unknown keys');
+
+  // A genuinely-unknown key, by contrast, must be REJECTED with the alias map — never silently dropped onto the
+  // wrong control with a confident success.
+  const unknownKey = await call('tools/call', { name: 'find_and_act', arguments: { do: 'read', selector: { frobnicate: 'Start' } } });
+  assert(unknownKey.result?.isError === true && /unknown selector key/.test(textOf(unknownKey)) && /role\/type → controlType/.test(textOf(unknownKey)), 'a genuinely-unknown selector key is rejected with the alias map, not silently dropped');
 } finally {
   proc.kill();
 }
