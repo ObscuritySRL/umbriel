@@ -175,6 +175,8 @@ export {
   restoreWindow,
   screenshot,
   snapWindow,
+  systemStatus,
+  type SystemStatus,
   type WindowCapture,
   type WindowInfo,
   windowForProcess,

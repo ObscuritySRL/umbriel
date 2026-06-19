@@ -296,6 +296,42 @@ export function isSecureDesktopActive(): boolean {
   }
 }
 
+export interface SystemStatus {
+  inputDesktop: string; // the active input desktop's name ('Default' when normal; 'Winlogon'/'Screen-saver'/'' otherwise)
+  secureDesktop: boolean; // a lock screen / UAC consent / Ctrl-Alt-Del secure desktop is up — the user's apps are NOT readable or drivable until it clears
+  remoteSession: boolean; // driven over an RDP / Terminal Services session
+  screenSaverRunning: boolean; // a screensaver has blanked the display
+  onBattery: boolean; // running on battery (idle sleep / display-off may be enabled) rather than AC
+  monitors: number; // attached display count (0 = headless / no render surface — captures may be blank)
+  foreground: string; // the active window's title ('' if none)
+}
+
+const SM_CMONITORS = 80;
+const SM_REMOTESESSION = 0x1000;
+const SPI_GETSCREENSAVERRUNNING = 0x0072;
+
+/** A snapshot of the environment signals an agent should check before trusting a read or capture: a lock/secure
+ *  desktop or a running screensaver means the user's apps are blanked or unreadable, and a headless (0-monitor) or RDP
+ *  session changes what capture returns. (A powered-off monitor (DPMS) is NOT cleanly snapshot-detectable from user
+ *  mode and does NOT by itself empty the a11y tree — apps keep running; the lock/screensaver/desktop/monitor signals
+ *  cover the states that actually make a read unreliable.) */
+export function systemStatus(): SystemStatus {
+  const running = Buffer.alloc(4);
+  const screenSaverRunning = User32.SystemParametersInfoW(SPI_GETSCREENSAVERRUNNING, 0, running.ptr!, 0) !== 0 && running.readUInt32LE(0) !== 0;
+  const power = Buffer.alloc(12); // SYSTEM_POWER_STATUS: BYTE ACLineStatus@0, BatteryFlag@1, BatteryLifePercent@2, …
+  const onBattery = Kernel32.GetSystemPowerStatus(power.ptr!) !== 0 && power.readUInt8(0) === 0; // ACLineStatus 0 = battery (1 = AC, 255 = unknown)
+  const fg = foregroundWindow();
+  return {
+    inputDesktop: inputDesktopName(),
+    secureDesktop: isSecureDesktopActive(),
+    remoteSession: User32.GetSystemMetrics(SM_REMOTESESSION) !== 0,
+    screenSaverRunning,
+    onBattery,
+    monitors: User32.GetSystemMetrics(SM_CMONITORS),
+    foreground: fg !== 0n ? readWindowText(fg) : '',
+  };
+}
+
 /** Whether a window is minimized (iconic) — readable for any top-level window without touching it. */
 export function isMinimized(hWnd: bigint): boolean {
   return User32.IsIconic(hWnd) !== 0;
