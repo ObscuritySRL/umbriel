@@ -58,7 +58,16 @@ function assert(condition: boolean, message: string): void {
 }
 
 const EM_SETMODIFY = 0x00b9;
-const docRef = async (): Promise<string | undefined> => /(?:Document|Edit|Text)[^\n]*?\[ref=(e\d+(?:#\d+)?)\]/i.exec(textOf(await call('tools/call', { name: 'desktop_snapshot', arguments: {} })))?.[1];
+// A fresh desktop_snapshot after a VALUE change (the type below) returns a compact Δ / "no UI change" that omits
+// the editor's [ref=] line; refs survive value deltas (only a re-render bumps the #generation), so cache the last
+// resolved ref and fall back to it — else docRef() returns undefined and press_key runs with NO ref, taking the
+// generic SendInput chord instead of the ref-gated cursor-free EM_UNDO path.
+let lastDocRef: string | undefined;
+const docRef = async (): Promise<string | undefined> => {
+  const found = /(?:Document|Edit|Text)[^\n]*?\[ref=(e\d+(?:#\d+)?)\]/i.exec(textOf(await call('tools/call', { name: 'desktop_snapshot', arguments: {} })))?.[1];
+  if (found !== undefined) lastDocRef = found;
+  return found ?? lastDocRef;
+};
 
 umbriel.initialize();
 const notepad = await umbriel.launch(['notepad.exe'], { className: 'Notepad' });
