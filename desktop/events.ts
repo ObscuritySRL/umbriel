@@ -33,6 +33,7 @@ const CHILDID_SELF = 0;
 const GA_ROOT = 2;
 const TH32CS_SNAPPROCESS = 0x0000_0002;
 const INVALID_HANDLE = 0xffff_ffff_ffff_ffffn;
+const PROCESS_TERMINATE = 0x0001;
 
 export type WindowEventType = 'appear' | 'close' | 'focus' | 'minimize' | 'restore' | 'rename';
 
@@ -244,6 +245,23 @@ export function listProcesses(): { processId: number; name: string }[] {
     return processes;
   } finally {
     Kernel32.CloseHandle(snapshot);
+  }
+}
+
+/**
+ * Terminate a process by pid (TerminateProcess via an OpenProcess(PROCESS_TERMINATE) handle) — kill a hung/stray
+ * process natively, no `taskkill`/Stop-Process. Returns 'killed', 'denied' (the process exists but this session
+ * cannot terminate it — elevated/protected from a medium-integrity host), or 'not-found'. GetLastError is unreliable
+ * across the bun:ffi boundary, so denied-vs-not-found is decided by the toolhelp snapshot (visible across every
+ * integrity level), not the error code.
+ */
+export function killProcess(processId: number): 'killed' | 'denied' | 'not-found' {
+  const handle = Kernel32.OpenProcess(PROCESS_TERMINATE, 0, processId);
+  if (handle === 0n) return listProcesses().some((process) => process.processId === processId) ? 'denied' : 'not-found';
+  try {
+    return Kernel32.TerminateProcess(handle, 1) !== 0 ? 'killed' : 'denied';
+  } finally {
+    Kernel32.CloseHandle(handle);
   }
 }
 

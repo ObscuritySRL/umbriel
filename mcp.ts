@@ -45,6 +45,7 @@ import {
   javaInvoke,
   javaSetText,
   javaTree,
+  killProcess,
   listMonitors,
   maximizeWindow,
   middleClickAt,
@@ -2066,6 +2067,12 @@ const TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'kill_process',
+    category: 'os',
+    description: 'Terminate a process by {pid} (precise) or {name} (EVERY matching image, EXCLUDING this server) — kill a hung/stray process natively, no taskkill/Stop-Process. Reports killed / access-denied (the process is elevated/protected and this session cannot terminate it — see current_user) / not-found. Gated behind the "os" policy category; destructive.',
+    inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Exact process id to terminate' }, name: { type: 'string', description: 'Image-name substring — terminate ALL matching (e.g. "notepad.exe")' } } },
+  },
+  {
     name: 'open_path',
     category: 'os',
     description: 'Open a file, folder, or URL with its default handler (Explorer/browser). Gated behind the "os" policy category.',
@@ -3314,6 +3321,23 @@ const HANDLERS: Record<string, ToolHandler> = {
         return errorResult(`launched${via} ${JSON.stringify(safeCommand)} but no NEW window matching ${JSON.stringify(target)} appeared within ${timeout}ms — call list_windows / wait_for_window, then attach by hWnd.`);
       await Bun.sleep(64);
     }
+  },
+  kill_process: (args) => {
+    const describe = (result: 'killed' | 'denied' | 'not-found', pid: number): string =>
+      result === 'killed' ? `killed pid ${pid}` : result === 'denied' ? `pid ${pid}: access-denied — it is elevated/protected and this session cannot terminate it (see current_user)` : `pid ${pid}: no such process`;
+    if (typeof args.pid === 'number') {
+      const result = killProcess(args.pid);
+      return result === 'killed' ? textResult(describe(result, args.pid)) : errorResult(`kill_process: ${describe(result, args.pid)}`);
+    }
+    if (typeof args.name === 'string') {
+      const needle = args.name.toLowerCase();
+      const matches = umbriel.listProcesses().filter((entry) => entry.processId !== process.pid && entry.name.toLowerCase().includes(needle)); // never kill this server
+      if (matches.length === 0) return errorResult(`kill_process: no process matching ${JSON.stringify(args.name)} is running (excluding this server)`);
+      const results = matches.map((entry) => ({ name: entry.name, pid: entry.processId, result: killProcess(entry.processId) }));
+      const killed = results.filter((entry) => entry.result === 'killed').length;
+      return textResult(`killed ${killed}/${matches.length} matching ${JSON.stringify(args.name)}: ${results.map((entry) => `${entry.name}#${entry.pid}=${entry.result}`).join(', ')}`);
+    }
+    return errorResult('kill_process: provide {pid} or {name}');
   },
   run_program: async (args) => {
     const command = requireString(args, 'command');
