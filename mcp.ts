@@ -33,6 +33,7 @@ import {
   dragTo,
   type Element,
   encodePNG,
+  fileAttributes,
   findWindow,
   foregroundWindow,
   holdKey,
@@ -2108,6 +2109,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
   {
+    name: 'stat_path',
+    category: 'fs',
+    description: 'Stat a path natively (no dir/Get-Item shell): whether it exists, file vs directory, byte size, modified + created times, and the Windows attribute flags (read-only / hidden / system / reparse-point). Check a file\'s size BEFORE read_file (which caps at 20k chars). Gated behind the "fs" policy category; restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  },
+  {
     name: 'make_dir',
     category: 'fs',
     description: 'Create a directory (and any missing parents) natively, no mkdir shell. Gated behind the "fs" policy category; restricted to UMBRIEL_FS_ROOT when set.',
@@ -3449,6 +3456,23 @@ const HANDLERS: Record<string, ToolHandler> = {
   list_dir: async (args) => {
     const entries = await readdir(resolveFsPath(requireString(args, 'path')), { withFileTypes: true });
     return textResult(entries.map((entry) => `${entry.isDirectory() ? 'd' : '-'} ${entry.name}`).join('\n') || '(empty directory)');
+  },
+  stat_path: (args) => {
+    const path = resolveFsPath(requireString(args, 'path'));
+    const attributes = fileAttributes(path); // FFI: the read-only/hidden/system/reparse bits node:fs can't surface
+    if (attributes === 0xffff_ffff) return textResult(`${path}: does not exist (or is inaccessible)`); // INVALID_FILE_ATTRIBUTES
+    const flags: string[] = [];
+    if (attributes & 0x1) flags.push('read-only');
+    if (attributes & 0x2) flags.push('hidden');
+    if (attributes & 0x4) flags.push('system');
+    if (attributes & 0x400) flags.push('reparse-point');
+    const kind = attributes & 0x10 ? 'directory' : 'file';
+    try {
+      const stats = statSync(path); // node:fs: size + times (benchmark-chosen for what it does best)
+      return textResult(`${path}: ${kind}, ${stats.size} bytes, modified ${new Date(stats.mtimeMs).toISOString()}, created ${new Date(stats.birthtimeMs).toISOString()}${flags.length > 0 ? ` [${flags.join(', ')}]` : ''}`);
+    } catch {
+      return textResult(`${path}: ${kind}${flags.length > 0 ? ` [${flags.join(', ')}]` : ''} (attributes 0x${attributes.toString(16)}; size/time unavailable)`);
+    }
   },
   make_dir: (args) => {
     const path = resolveFsPath(requireString(args, 'path'));

@@ -151,6 +151,7 @@
     "example:snapshot-fallback": "bun ./example/snapshot-fallback.integration.test.ts",
     "example:snapshot-leak": "bun ./example/snapshot-leak.integration.test.ts",
     "example:snapshot-scope": "bun ./example/snapshot-scope.integration.test.ts",
+    "example:stat-path": "bun ./example/stat-path.integration.test.ts",
     "example:system-resources": "bun ./example/system-resources.integration.test.ts",
     "example:system-status": "bun ./example/system-status.integration.test.ts",
     "example:terminal-scrollback": "bun ./example/terminal-scrollback.integration.test.ts",

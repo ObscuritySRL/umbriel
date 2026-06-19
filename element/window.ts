@@ -222,6 +222,14 @@ export function openPath(path: string): boolean {
   return Shell32.ShellExecuteW(0n, null, file.ptr!, null, null, 0x0000_0001) > 32n; // SW_SHOWNORMAL
 }
 
+/** The raw Win32 file-attribute bitmask for a path (GetFileAttributesW) — `0xffffffff` (INVALID_FILE_ATTRIBUTES) when
+ *  the path does not exist or is inaccessible. Carries the read-only/hidden/system/reparse bits that node:fs's coarse
+ *  `mode` cannot surface (FILE_ATTRIBUTE_READONLY 0x1, HIDDEN 0x2, SYSTEM 0x4, DIRECTORY 0x10, REPARSE_POINT 0x400). */
+export function fileAttributes(path: string): number {
+  const wide = Buffer.from(`${path}\0`, 'utf16le'); // named local — kept alive across the synchronous FFI read
+  return Kernel32.GetFileAttributesW(wide.ptr!);
+}
+
 const TOKEN_QUERY = 0x0000_0008;
 const TOKEN_ELEVATION = 20; // TOKEN_INFORMATION_CLASS::TokenElevation
 const TOKEN_ELEVATION_TYPE = 18; // TOKEN_INFORMATION_CLASS::TokenElevationType (1 default, 2 full/elevated, 3 limited/UAC-filtered)

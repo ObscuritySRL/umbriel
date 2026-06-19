@@ -157,6 +157,7 @@ export {
   closeWindow,
   currentUser,
   type UserContext,
+  fileAttributes,
   findWindow,
   foregroundWindow,
   inputDesktopName,
