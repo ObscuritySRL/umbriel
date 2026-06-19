@@ -4,7 +4,7 @@
  * branches were bare, leaving the agent to hand-hunt the dropdown/flyout. act() now wraps both verbs in withPopupNote,
  * appending the popup's hWnd, so the natural selector-driven call surfaces it too.
  *
- * Proof: find_and_act {selector:{controlType:"ComboBox"}, do:"expand"} on Character Map's classic Font combobox returns
+ * Proof: find_and_act {selector:{controlType:"ComboBox", nameContains:"Font"}, do:"expand"} on Character Map's Font combobox returns
  * the ComboLBox popup's hWnd. The dropdown is dismissed (Escape) and Character Map closed in teardown.
  *
  * bun test is broken repo-wide — runnable harness (MCP subprocess + a spawned Character Map):
@@ -64,7 +64,10 @@ try {
   else {
     await Bun.sleep(900);
     await call('tools/call', { name: 'attach', arguments: { hWnd: `0x${charmap.hWnd.toString(16)}` } });
-    const r = await call('tools/call', { name: 'find_and_act', arguments: { selector: { controlType: 'ComboBox' }, do: 'expand' } });
+    // Character Map exposes THREE comboboxes ("Character set :", "Group by :", "Font :"); the bare
+    // {controlType:'ComboBox'} selector matched all 3 and (correctly) hit the ambiguous-target refusal.
+    // Narrow to the Font combobox — the documented target — so exactly one matches and expand runs.
+    const r = await call('tools/call', { name: 'find_and_act', arguments: { selector: { controlType: 'ComboBox', nameContains: 'Font' }, do: 'expand' } });
     const text = textOf(r);
     assert(r.result?.isError !== true && /opened a flyout\/menu in its OWN window/.test(text) && /\[hWnd=0x[0-9a-f]+\]/.test(text), `find_and_act {do:expand} auto-returns the dropdown's own-window popup (got: ${JSON.stringify(text.slice(0, 110))})`);
     const popupHwnd = /\[hWnd=0x([0-9a-f]+)\]/.exec(text)?.[1];
