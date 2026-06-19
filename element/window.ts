@@ -333,6 +333,13 @@ function isOwnedBy(window: bigint, owner: bigint): boolean {
   return false;
 }
 
+/** The DIRECT owner of a top-level window (GetWindow GW_OWNER), or 0n if it owns to nothing — the parent dialog/picker
+ *  an owned window belongs to (the immediate owner, not the whole chain isOwnedBy walks). */
+export function ownerWindow(hWnd: bigint): bigint {
+  const GW_OWNER = 0x0000_0004;
+  return hWnd === 0n ? 0n : User32.GetWindow(hWnd, GW_OWNER);
+}
+
 /** If a DIFFERENT top-level window now holds the foreground AND it is owned by `owner` — a dialog / picker / modal that
  *  `owner` just spawned — return that window's hWnd, else 0n. Lets a post-action snapshot warn that the agent's action
  *  opened a NEW window its refs do not cover, WITHOUT false-firing while driving `owner` cursor-free in the background

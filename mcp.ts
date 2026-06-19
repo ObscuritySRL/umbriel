@@ -56,6 +56,7 @@ import {
   ownedForegroundDialog,
   ownedModalDialog,
   ownerHwnd,
+  ownerWindow,
   pasteToControl,
   postButtonClick,
   postClickAt,
@@ -2181,7 +2182,14 @@ const HANDLERS: Record<string, ToolHandler> = {
     attached = next;
     lastSnapshotBody = '';
     lastSnapshotTree = null;
-    return withSnapshot(`attached to ${JSON.stringify(next.name)}${blindSpotNote(next.className)}`);
+    const owner = ownerWindow(next.hWnd);
+    const ownerInfo = owner !== 0n ? umbriel.windows({ includeUntitled: true }).find((window) => window.hWnd === owner) : undefined;
+    // Breadcrumb: when the attached window is an OWNED dialog/picker, name its parent so the agent can return to it in
+    // ONE call after dismissing the dialog (otherwise it must recall, or re-list_windows + re-identify, the parent).
+    // Empty for the common non-owned window — ~0 tokens (GW_OWNER is 0n), and only when the owner is a live enumerated
+    // top-level window (a popup whose owner is gone/unlisted gets no misleading breadcrumb).
+    const ownerNote = ownerInfo !== undefined ? ` (owned by 0x${owner.toString(16)} ${JSON.stringify(ownerInfo.title)} — attach {hWnd:0x${owner.toString(16)}} to return to the parent)` : '';
+    return withSnapshot(`attached to ${JSON.stringify(next.name)}${blindSpotNote(next.className)}${ownerNote}`);
   },
   desktop_snapshot: (args) => textResult(snapshotText(typeof args.maxDepth === 'number' ? args.maxDepth : undefined, typeof args.root === 'string' ? args.root : undefined, typeof args.maxNodes === 'number' ? args.maxNodes : undefined)),
   find_and_act: async (args) => {

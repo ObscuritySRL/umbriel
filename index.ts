@@ -169,6 +169,7 @@ export {
   openPath,
   ownedForegroundDialog,
   ownedModalDialog,
+  ownerWindow,
   processImagePath,
   raiseWindow,
   restoreWindow,
