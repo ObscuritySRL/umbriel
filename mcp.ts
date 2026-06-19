@@ -82,6 +82,10 @@ import {
   renderJavaTree,
   renderSnapshot,
   renderWindowTree,
+  parseHive,
+  registryGet,
+  registryList,
+  type RegistryData,
   restoreWindow,
   rightClickAt,
   ScrollAmount,
@@ -1441,6 +1445,13 @@ function fsError(operation: string, error: unknown): string {
   return `${operation}: ${error instanceof Error ? error.message : String(error)}`;
 }
 
+/** Render a decoded registry datum for the tool result. */
+function formatRegistryValue(value: RegistryData): string {
+  if (Array.isArray(value)) return value.map((entry) => JSON.stringify(entry)).join(', ');
+  if (typeof value === 'number' || typeof value === 'bigint') return `${value} (0x${value.toString(16)})`;
+  return JSON.stringify(value); // a REG_SZ string, or a REG_BINARY hex string
+}
+
 // These per-property descriptions are inlined into many tool schemas (REF_DESC ×29, ELEMENT_DESC ×23), so every
 // extra char is paid N times on the fixed tools/list payload the model reads each session. Keep only the
 // load-bearing point-of-use directive; the full ref contract lives ONCE in INSTRUCTIONS (and stale refs are
@@ -2083,6 +2094,18 @@ const TOOLS: McpTool[] = [
     category: 'os',
     description: 'Terminate a process by {pid} (precise) or {name} — an EXACT case-insensitive image name that terminates EVERY process with that exact name (e.g. "chrome.exe" kills all Chrome). A substring is NOT accepted, so a stray short name cannot mass-kill; this server and its host process are never targeted. Reports killed / access-denied (elevated/protected — see current_user) / not-found. No taskkill/Stop-Process. Gated behind the "os" policy category; destructive.',
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Exact process id to terminate' }, name: { type: 'string', minLength: 1, description: 'EXACT image name (case-insensitive, e.g. "notepad.exe") — terminates ALL processes with that exact name' } } },
+  },
+  {
+    name: 'registry_get',
+    category: 'os',
+    description: 'Read ONE Windows registry value natively (no reg query / Get-ItemProperty shell): an install path, an OS/app version, a policy or HKCU preference. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {value} the value name (omit for the key default). Returns the typed value (REG_SZ/DWORD/QWORD/MULTI_SZ/BINARY decoded). Gated behind the "os" policy category.',
+    inputSchema: { type: 'object', properties: { hive: { type: 'string', description: 'HKLM | HKCU | HKCR | HKU' }, key: { type: 'string', description: 'Subkey path, e.g. "SOFTWARE\\\\Microsoft\\\\Windows NT\\\\CurrentVersion"' }, value: { type: 'string', description: 'Value name (omit for the key default)' } }, required: ['hive', 'key'] },
+  },
+  {
+    name: 'registry_list',
+    category: 'os',
+    description: 'Enumerate a Windows registry key natively (no reg query shell): its immediate subkeys and its values (name / type / decoded data). {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path. Gated behind the "os" policy category.',
+    inputSchema: { type: 'object', properties: { hive: { type: 'string', description: 'HKLM | HKCU | HKCR | HKU' }, key: { type: 'string', description: 'Subkey path' } }, required: ['hive', 'key'] },
   },
   {
     name: 'open_path',
@@ -3385,6 +3408,25 @@ const HANDLERS: Record<string, ToolHandler> = {
       return textResult(`killed ${killed}/${matches.length} named ${JSON.stringify(args.name)}: ${results.map((entry) => `${entry.name}#${entry.pid}=${entry.result}`).join(', ')}`);
     }
     return errorResult('kill_process: provide {pid} or {name}');
+  },
+  registry_get: (args) => {
+    const hive = parseHive(requireString(args, 'hive'));
+    if (hive === null) return errorResult('registry_get: hive must be HKLM, HKCU, HKCR, or HKU');
+    const key = requireString(args, 'key');
+    const valueName = typeof args.value === 'string' ? args.value : '';
+    const result = registryGet(hive, key, valueName);
+    if (result === null) return errorResult(`registry_get: ${hive}\\${key}\\${valueName || '(default)'} not found or inaccessible`);
+    return textResult(`${hive}\\${key}\\${result.name} = (${result.type}) ${formatRegistryValue(result.value)}`);
+  },
+  registry_list: (args) => {
+    const hive = parseHive(requireString(args, 'hive'));
+    if (hive === null) return errorResult('registry_list: hive must be HKLM, HKCU, HKCR, or HKU');
+    const key = requireString(args, 'key');
+    const result = registryList(hive, key);
+    if (result === null) return errorResult(`registry_list: ${hive}\\${key} not found or inaccessible`);
+    const subkeyLines = result.subkeys.length > 0 ? `subkeys (${result.subkeys.length}):\n${result.subkeys.map((name) => `  [${name}]`).join('\n')}` : '(no subkeys)';
+    const valueLines = result.values.length > 0 ? `values (${result.values.length}):\n${result.values.map((entry) => `  ${entry.name} = (${entry.type}) ${formatRegistryValue(entry.value)}`).join('\n')}` : '(no values)';
+    return textResult(`${hive}\\${key}\n${subkeyLines}\n${valueLines}`);
   },
   run_program: async (args) => {
     const command = requireString(args, 'command');
