@@ -526,6 +526,21 @@ export class Element {
     }
   }
 
+  /** Poll THIS element's own live state until it satisfies `expectation` (or the timeout) — the by-ref analogue of
+   *  waitForState (which finds by selector), so wait_for {ref, state} can await a control by the EXACT ref the agent
+   *  holds, with no findFirstMatch wrong-sibling hazard on a non-uniquely-selectable control. Caller still owns `this`. */
+  async waitForOwnState(expectation: StateExpectation): Promise<void> {
+    const timeout = expectation.timeout ?? 5000;
+    const interval = expectation.interval ?? 100;
+    const start = Bun.nanoseconds();
+    for (;;) {
+      if (stateMatches(this, expectation)) return;
+      const elapsed = (Bun.nanoseconds() - start) / 1e6;
+      if (elapsed >= timeout) throw new Error(`timed out after ${Math.round(elapsed)} ms — ${JSON.stringify(this.name)} never reached ${JSON.stringify(expectation)} (last seen: ${describeState(this)})`);
+      await Bun.sleep(interval);
+    }
+  }
+
   /** Build the actionable no-match message by scanning the candidate set under this element. */
   describeNoMatch(selector: Selector): string {
     const candidates = this.findAll(selector.controlType !== undefined ? { controlType: selector.controlType } : {});
