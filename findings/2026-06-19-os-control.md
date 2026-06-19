@@ -88,11 +88,26 @@ snapshot instead. (Benchmarks: .scratch/bench-resources.ts, bench-fs.ts, probe-k
 3. **get_displays** (read) — SHIPPED (15e95af). desktop/display.ts: user32 EnumDisplayDevicesW + EnumDisplaySettingsW,
    DEVMODEW at absolute offsets (bpp@168, width@172, height@176, freq@184), DISPLAY_DEVICEW StateFlags@324. Verified live
    (5120x1440@240, 32-bit, RTX 4090). Resolution/refresh/topology for capture+placement.
-4. **registry_set** (os, value 6.5) — DEFER: generalizes the proven scoped write primitives, but arbitrary HKLM/HKCU
-   write is the most destructive surface; needs confirm-flag + per-type validation + careful review. Build after the reads.
-5. **list_scheduled_tasks** (read, value 7) — OWNER-DECISION: buildable on combase + umbriel's OWN vcall/guid COM
-   machinery (CLSID_TaskScheduler, no taskschd pkg needed), but hand-driving ITaskService via raw vtable slots is the
-   highest segfault risk. The #1 autorun/persistence vector. Owner decides whether to invest the COM work.
+4. **registry_set** (os) — SHIPPED (671b263). desktop/registry.ts registrySet + encodeRegistryWrite (typed
+   SZ/EXPAND_SZ/DWORD/QWORD/MULTI_SZ validation). Layered gating: os category + {confirm:true} + per-type validation +
+   no-implicit-key-create + HKLM elevation wall + result echoes key+type only (not data, the trace-journal lesson).
+   Verified live (typed round-trips, confirm/type/no-key refusals, os-gated).
+5. **list_scheduled_tasks** (read, value 7) — STILL PENDING — the one item needing a DEDICATED slot-verified COM pass
+   (a wrong vtable slot SEGFAULTS; the goal mandates proving each slot LIVE + extending slot-gate.test.ts). Buildable on
+   combase + umbriel's OWN vcall/guid/comRelease (no taskschd pkg). Panel-B PROVED the foundation:
+   CoCreateInstance(CLSID_TaskScheduler {0f87369f-a4e5-4cfc-bd3e-73e6154572dd}, IID_ITaskService
+   {2faba4c7-4da9-4013-9697-20cc3fd40f85}) + ITaskService::Connect → S_OK via vcall. SLOT PLAN (IDispatch-derived, so
+   IUnknown 0-2 + IDispatch 3-6, interface methods from 7): ITaskService GetFolder@7, Connect@10 (proven),
+   get_Connected@11. ITaskFolder get_Name@7, get_Path@8, GetTasks@14 (LONG flags, IRegisteredTaskCollection**).
+   IRegisteredTaskCollection get_Count@7, get_Item@8. IRegisteredTask get_Name@7, get_State@9, get_Enabled@10,
+   get_LastRunTime@14 (DATE in VARIANT), get_LastTaskResult@15 (LONG), get_NextRunTime@17 (DATE). BUILD APPROACH: verify
+   EACH slot with an isolated live probe BEFORE chaining (segfault-isolate), decode VARIANT DATE via the existing
+   com/reads.ts decoders, comRelease every interface in finally, recursive folder walk from root "\". The #1
+   autorun/persistence vector. Deferred from this session as the single highest-segfault-risk item — wants its own
+   careful pass, not a tail-end rush.
+
+## Capability surface as of this session: 82 policy-gated MCP tools (61 → 82). Network (iphlpapi) remains BLOCKED — no
+## binding dep; adding @bun-win32/iphlpapi is an owner decision (new dep + attack surface).
 - **network (list_adapters/list_connections) — BLOCKED:** no iphlpapi/ws2_32 in ANY installed @bun-win32 binding
   (verified). Genuinely needs a NEW @bun-win32/iphlpapi dependency — an owner decision (new dep + attack surface).
 
