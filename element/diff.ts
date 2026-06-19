@@ -7,6 +7,8 @@
 // when it has one (a stable identity), else its index — so inserting a sibling (e.g. a result Text)
 // before a control does NOT shift the keys of automationId-bearing siblings and renumber their refs.
 
+import { capLabel } from './refmap'; // share the one name-length cap with renderSnapshot (pure fn, no cycle: refmap does not import diff)
+
 /** The minimal tree shape diffTrees needs — satisfied structurally by both UiaNode and RefNode. */
 export interface DiffNode {
   role: string;
@@ -128,14 +130,14 @@ export function renderDiff(diff: TreeDiff): { text: string; count: number } {
   const lines: string[] = [];
   for (const change of diff.appeared) {
     if (change.ref === undefined && change.name.trim().length === 0) continue;
-    lines.push(`+ ${change.role}${change.name.trim().length > 0 ? ` ${JSON.stringify(change.name)}` : ''}${change.ref !== undefined ? ` [ref=${change.ref}]` : ''}`);
+    lines.push(`+ ${change.role}${change.name.trim().length > 0 ? ` ${capLabel(change.name)}` : ''}${change.ref !== undefined ? ` [ref=${change.ref}]` : ''}`);
   }
-  for (const change of diff.renamed) lines.push(`~ ${change.role} ${JSON.stringify(change.before)} → ${JSON.stringify(change.after)}${change.ref !== undefined ? ` [ref=${change.ref}]` : ''}`);
+  for (const change of diff.renamed) lines.push(`~ ${change.role} ${capLabel(change.before)} → ${capLabel(change.after)}${change.ref !== undefined ? ` [ref=${change.ref}]` : ''}`);
   for (const change of diff.restated)
-    lines.push(`~ ${change.role}${change.name.trim().length > 0 ? ` ${JSON.stringify(change.name)}` : ''}${change.ref !== undefined ? ` [ref=${change.ref}]` : ''} ${change.before.trim() || '(—)'} → ${change.after.trim() || '(—)'}`);
+    lines.push(`~ ${change.role}${change.name.trim().length > 0 ? ` ${capLabel(change.name)}` : ''}${change.ref !== undefined ? ` [ref=${change.ref}]` : ''} ${change.before.trim() || '(—)'} → ${change.after.trim() || '(—)'}`);
   for (const change of diff.disappeared) {
     if (change.name.trim().length === 0) continue;
-    lines.push(`- ${change.role} ${JSON.stringify(change.name)}`);
+    lines.push(`- ${change.role} ${capLabel(change.name)}`);
   }
   return { text: lines.join('\n'), count: lines.length };
 }

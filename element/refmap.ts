@@ -319,10 +319,18 @@ export function snapshot(window: Element, options: { maxDepth?: number; maxNodes
   }
 }
 
+const LABEL_CAP = 120; // cap a displayed control NAME like the value@40 suffix above — an editor line / chat row / log line / paragraph surfaced as a node's name would otherwise render in FULL on EVERY per-action snapshot (and push actionable refs past capSnapshot's size cliff)
+/** A node's display name, JSON-quoted and length-capped (mirrors the value@40 cap). Keeps short labels intact, clips
+ *  a long one so a single verbose name can't bloat every snapshot. Matching is UNAFFECTED — selectors compare the LIVE
+ *  element.name (condition.ts), never this rendered string; a `…`-clipped display name is reachable via nameContains. */
+export function capLabel(name: string): string {
+  return JSON.stringify(name.length > LABEL_CAP ? `${name.slice(0, LABEL_CAP)}…` : name);
+}
+
 /** Render a ref-keyed tree to compact, token-economical text (the Playwright-MCP snapshot analog). */
 export function renderSnapshot(node: RefNode, depth = 0): string {
   const indent = '  '.repeat(depth);
-  const label = node.name.trim().length > 0 ? ` ${JSON.stringify(node.name)}` : '';
+  const label = node.name.trim().length > 0 ? ` ${capLabel(node.name)}` : '';
   const ref = node.ref !== undefined ? ` [ref=${node.ref}]` : '';
   const id = node.automationId !== undefined ? ` id=${node.automationId}` : '';
   // Surface greyed-out actionable controls — a disabled Next/OK/Submit reads identically to an enabled one otherwise,
