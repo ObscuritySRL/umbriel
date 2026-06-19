@@ -722,7 +722,10 @@ function resolveRef(ref: string): Element {
   // fabricated/hallucinated, so fall through to the "not in the current snapshot" wording rather than implying it
   // once existed and will reappear on re-snapshot.
   if (hash >= 0 && Number(ref.slice(hash + 1)) !== refGen && element !== null)
-    throw new Error(`ref ${id} is from an earlier snapshot generation (the tree was re-grounded since) — read the latest snapshot above and use ITS refs, or use find_and_act {selector} / reveal {selector}, which need no ref`);
+    // The id STILL resolves in the current generation — name what it denotes NOW (named() is zero-round-trip on the
+    // snapshot's Full cache) and hand back the current ref, so the agent self-heals in one retry on a static-position
+    // bump (or instantly sees the wrong control and pivots by name). Still NOT auto-resolved — rejected, not mis-resolved.
+    throw new Error(`ref ${id} is from an earlier snapshot generation (the tree was re-grounded since) — in the CURRENT snapshot ${id} now denotes ${named(element)}; if that is your target, retry with ${id}#${refGen}; otherwise read the latest snapshot above or use find_and_act {selector} / reveal {selector}, which need no ref`);
   if (element === null) throw new Error(`ref ${id} not in the current snapshot (epoch ${epoch}) — re-ground with desktop_snapshot, or use find_and_act {selector} / reveal {selector}, which need no ref`);
   return element;
 }
