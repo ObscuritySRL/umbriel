@@ -22,12 +22,12 @@ import { captureWindowLive, closeWindow, disposeWgc, Element, findWindow, msaaTr
 if (Bun.env.SAFETY_CHILD === 'wgc') {
   umbriel.initialize();
   const available = wgcAvailable(); // build + cache the device bundle (false on a locked/headless box)
-  Bun.spawn(['cmd', '/c', 'start', 'calc'], { stdout: 'ignore', stderr: 'ignore' });
-  let hWnd = 0n;
-  for (let attempt = 0; attempt < 20 && hWnd === 0n; attempt += 1) {
-    Bun.sleepSync(300);
-    hWnd = findWindow({ title: 'Calculator' });
-  }
+  // Capture the ALWAYS-PRESENT taskbar (classic Win32, WGC-composited, never suspends) — section A proves the
+  // BUNDLE rebuilds across uninitialize, so the WINDOW is incidental. The old throwaway-Calculator target raced
+  // section C's launch/close of single-instance UWP Calculator (which suspends), yielding false null captures
+  // (the bundle rebuild itself is sound — proven standalone + via .scratch/probe-wgc). Shell_TrayWnd removes that
+  // confounder while keeping the test's teeth: a broken rebuild would still return null and fail.
+  const hWnd = findWindow({ className: 'Shell_TrayWnd' });
   let lastCaptureOk = false;
   for (let iteration = 0; iteration < 3; iteration += 1) {
     umbriel.initialize();
@@ -35,7 +35,6 @@ if (Bun.env.SAFETY_CHILD === 'wgc') {
     umbriel.uninitialize(); // disposeWgc() runs first → bundle released + nulled, RoUninitialize paired
   }
   disposeWgc(); // idempotent no-op (already disposed) — proves the self-guard
-  if (hWnd !== 0n) closeWindow(hWnd); // close the throwaway Calculator
   // If WGC is available, the final capture (bundle rebuilt after two uninitialize cycles) must succeed.
   process.exit(available && hWnd !== 0n && !lastCaptureOk ? 2 : 0);
 }
