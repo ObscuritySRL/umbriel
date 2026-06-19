@@ -2475,7 +2475,7 @@ const HANDLERS: Record<string, ToolHandler> = {
   },
   ocr: async (args) => {
     const region = args.region;
-    let result: { text: string; lines: { text: string; bounds: { x: number; y: number; width: number; height: number } }[] };
+    let result: { text: string; lines: { text: string; bounds: { x: number; y: number; width: number; height: number }; words: { text: string; bounds: { x: number; y: number; width: number; height: number } }[] }[] };
     let origin: string;
     if (typeof args.ref === 'string') {
       // Element-scoped, OCCLUSION-CORRECT (FlaUI Capture.Element / Playwright locator.screenshot): OCR just this
@@ -2506,10 +2506,19 @@ const HANDLERS: Record<string, ToolHandler> = {
       origin = `hWnd 0x${hWnd.toString(16)}`;
     }
     if (result.lines.length === 0) return textResult(`OCR (${origin}) found no text.`);
-    const body = result.lines.map((line) => `  [${line.bounds.x},${line.bounds.y} ${line.bounds.width}x${line.bounds.height}] ${line.text}`).join('\n');
+    const body = result.lines
+      .map((line) => {
+        const lineRow = `  [${line.bounds.x},${line.bounds.y} ${line.bounds.width}x${line.bounds.height}] ${line.text}`;
+        if (line.words.length < 2) return lineRow; // single-word line: its box centre IS the word — no per-word centres needed
+        // Multi-word line: the line-box centre lands on NO single word (whitespace or the wrong token), so hand back each
+        // word's own click_point centre — clicking a specific word/username/badge then needs no re-OCR via click_text.
+        const words = line.words.map((word) => `${JSON.stringify(word.text)}@${word.bounds.x + Math.floor(word.bounds.width / 2)},${word.bounds.y + Math.floor(word.bounds.height / 2)}`).join(' ');
+        return `${lineRow}\n      word centres: ${words}`;
+      })
+      .join('\n');
     // Pixels read off the screen are a prompt-injection surface — fence the OCR'd text so a hostile string baked into an
     // image ("ignore previous instructions") is data, not a command.
-    return textResult(fenceUntrusted(`OCR (${origin}) — ${result.lines.length} line(s); click text via click_point at a box centre (x+width/2, y+height/2):\n${body}`, 'OCR text'));
+    return textResult(fenceUntrusted(`OCR (${origin}) — ${result.lines.length} line(s); click a whole line via click_point at its box centre (x+width/2, y+height/2), or a single WORD at its listed word@x,y centre:\n${body}`, 'OCR text'));
   },
   click_point: (args) => {
     const x = requireNumber(args, 'x');
