@@ -83,6 +83,7 @@
     "example:agent-grounding": "bun ./example/agent-grounding.ts",
     "example:agent-loop": "bun ./example/agent-loop.ts",
     "example:attach-by-class": "bun ./example/attach-by-class.integration.test.ts",
+    "example:attach-title-no-match": "bun ./example/attach-title-no-match.integration.test.ts",
     "example:audit-args-not-leaked": "bun ./example/audit-args-not-leaked.integration.test.ts",
     "example:automate-calculator": "bun ./example/automate-calculator.ts",
     "example:benchmark": "bun ./example/benchmark.ts",
