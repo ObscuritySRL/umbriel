@@ -15,33 +15,35 @@ The WGC bundle-rebuild-after-uninitialize was flagged as a possible use-after-fr
 `init → capture → uninitialize → capture ×3` captures successfully on every iteration, and `disposeWgc()` +
 rebuild work. The exit-2 was purely the Calculator test-isolation race. Do not "fix" the WGC lifecycle code.
 
-## mcp-snapshot-economy — diagnosed: UWP cold-start flakiness, product economy works
+## mcp-snapshot-economy — FIXED (a test ref-source bug; the product economy is flawless)
 
-`.scratch/probe-snapshot.ts` shows `fiveRef` is undefined at the FIRST extraction — Calculator's "Five"
-button isn't present in the snapshot. Calculator is single-instance UWP with cold-start latency; its keypad
-tree isn't reliably warmed when the test snapshots (the failure point even varies run-to-run: the sweep
-reached `e49#3`, the probe fails at step one). The product is fine: the re-ground correctly returned a
-compact `(no UI change since the last snapshot — refs unchanged)` delta — the economy under test works, and
-refs survive value deltas as documented.
+CORRECTION of an earlier wrong call in this file. I first concluded (from `.scratch/probe-snapshot2.ts`) that
+Calculator's content tree was unavailable off-foreground and the test was an unfixable UWP-coupling dead-end.
+That was WRONG — a flaw in that probe: it parsed the ref out of repeated `desktop_snapshot` DELTA responses,
+which correctly say "(no UI change — refs unchanged)" and never re-list `[ref=]` lines, so the loop could
+never find "Five". Calculator's content IS available — a full attach snapshot carries the whole keypad incl.
+`Button "Five" [ref=e49#1]` (`.scratch/probe-uwp-ergonomics.ts`).
 
-VERIFIED DEAD-END (do not retry this approach): a warm-wait fix — retry desktop_snapshot until the "Five"
-ref appears — was tested live (`.scratch/probe-snapshot2.ts`) with a CLEAN Calculator restart + 25 retries
-(7.5s). `fiveRef` stayed `undefined` the whole time. So the keypad is NOT merely slow to warm: Win11
-Calculator's UWP content tree (the buttons) is not populated in the snapshot when the app is not the
-foreground/active window (UWP virtualizes/suspends the CoreWindow content tree in the background). A warm-wait
-CANNOT fix this. The test would have to raise Calculator to the foreground (defeating the background-driving
-premise) or retarget to a non-UWP target — i.e. this is the SAME strategic retargeting decision as the
-Notepad-coupled tests below, not a low-risk hygiene fix. Folded into the systematic finding.
+Real root cause (`.scratch/probe-snapshot4.ts`): the test took `fiveRef2` from a SEPARATE `desktop_snapshot {}`
+after the 1st press — which returns a no-change/value delta with no `[ref=]` to parse → `fiveRef2` undefined →
+the 2nd invoke ran without a ref and errored. The 1st press routes through the WinUI button's InvokePattern
+(no own HWND); the MSAA bridge RAISES the window (foreground steal — findings/32) and re-grounds the tree, so
+the invoke's OWN appended result carries a fresh "Five" ref. FIX (shipped): read `fiveRef2` from the 1st
+invoke's result. Verified live end-to-end: 1st press re-grounds (fresh `e49#4`); 2nd press (now foreground)
+returns exactly the asserted compact Δ — `~ Text "Display is 5" → "Display is 55"` (135 vs 4030 chars). The
+delta economy and ref-survival-across-value-delta all work as designed. Calculator is NOT a strategic
+retargeting item — it was a one-line ref-source bug.
 
-## SYSTEMATIC FINDING — Win11 single-instance UWP app coupling (one root cause, ~6 tests)
+## SYSTEMATIC FINDING — Win11 single-instance Notepad coupling (one root cause, 5 tests)
 
-These tests assume a classic Win10 single-window app with a clean, immediately-present control tree:
+These tests assume a classic Win10 single-window Notepad with a clean, immediately-present classic `EDIT`:
 `cursor-free-copy-cut`, `cursor-free-mcp-input`, `cursor-free-undo`, `copy-secret-redacted-not-journaled`,
-`snapshot-leak` (Notepad), and `mcp-snapshot-economy` (Calculator). On Windows 11 those apps are packaged
-single-instance UWP/WinUI:
+`snapshot-leak`. On Windows 11 Notepad is a packaged single-instance app:
 - **Notepad** — single-instance + session-restore (leftover content from a prior run reattaches), editor is
   `RichEditD2DPT` not classic `EDIT`. (Cursor-free posting itself WORKS — proven in cycle 2.)
-- **Calculator** — single-instance UWP, cold-start latency, suspends when backgrounded.
+
+(`mcp-snapshot-economy`, Calculator-based, was initially grouped here but proved to be a one-line test
+ref-source bug — now FIXED, see above. No Calculator coupling remains.)
 
 The umbriel PRODUCT paths all work (proven live across cycles 2-3). The failures are test-design coupling to
 OS-version-specific app behavior + cross-test isolation (shared single-instance app state).
@@ -53,7 +55,7 @@ RECOMMENDATION (owner's strategic call — NOT done autonomously): pick one —
 2. Keep real apps but add robust warmup/retry + guaranteed clean state (hard for single-instance UWP) and a
    per-test app-kill in teardown.
 This is a test-strategy decision (real-app coverage vs determinism) that belongs to the maintainer; an
-autonomous agent should not unilaterally rewrite ~6 intentional real-app integration tests.
+autonomous agent should not unilaterally rewrite these 5 intentional real-app integration tests.
 
 ## Other open
 
