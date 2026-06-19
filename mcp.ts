@@ -2069,8 +2069,8 @@ const TOOLS: McpTool[] = [
   {
     name: 'kill_process',
     category: 'os',
-    description: 'Terminate a process by {pid} (precise) or {name} (EVERY matching image, EXCLUDING this server) — kill a hung/stray process natively, no taskkill/Stop-Process. Reports killed / access-denied (the process is elevated/protected and this session cannot terminate it — see current_user) / not-found. Gated behind the "os" policy category; destructive.',
-    inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Exact process id to terminate' }, name: { type: 'string', description: 'Image-name substring — terminate ALL matching (e.g. "notepad.exe")' } } },
+    description: 'Terminate a process by {pid} (precise) or {name} — an EXACT case-insensitive image name that terminates EVERY process with that exact name (e.g. "chrome.exe" kills all Chrome). A substring is NOT accepted, so a stray short name cannot mass-kill; this server and its host process are never targeted. Reports killed / access-denied (elevated/protected — see current_user) / not-found. No taskkill/Stop-Process. Gated behind the "os" policy category; destructive.',
+    inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Exact process id to terminate' }, name: { type: 'string', minLength: 1, description: 'EXACT image name (case-insensitive, e.g. "notepad.exe") — terminates ALL processes with that exact name' } } },
   },
   {
     name: 'open_path',
@@ -3349,17 +3349,22 @@ const HANDLERS: Record<string, ToolHandler> = {
   kill_process: (args) => {
     const describe = (result: 'killed' | 'denied' | 'not-found', pid: number): string =>
       result === 'killed' ? `killed pid ${pid}` : result === 'denied' ? `pid ${pid}: access-denied — it is elevated/protected and this session cannot terminate it (see current_user)` : `pid ${pid}: no such process`;
+    const protectedPids = new Set([process.pid, process.ppid]); // never terminate this server or its host/launcher (the stdio transport)
     if (typeof args.pid === 'number') {
+      if (protectedPids.has(args.pid)) return errorResult('kill_process: refusing to terminate this server or its host process');
       const result = killProcess(args.pid);
       return result === 'killed' ? textResult(describe(result, args.pid)) : errorResult(`kill_process: ${describe(result, args.pid)}`);
     }
     if (typeof args.name === 'string') {
-      const needle = args.name.toLowerCase();
-      const matches = umbriel.listProcesses().filter((entry) => entry.processId !== process.pid && entry.name.toLowerCase().includes(needle)); // never kill this server
-      if (matches.length === 0) return errorResult(`kill_process: no process matching ${JSON.stringify(args.name)} is running (excluding this server)`);
+      const wanted = args.name.trim().toLowerCase();
+      if (wanted.length === 0) return errorResult('kill_process: {name} must be a non-empty image name (e.g. "notepad.exe")');
+      // EXACT case-insensitive image-name match — a substring would let a short/empty name ("s", "") fan out to
+      // csrss/services/lsass/svchost and the desktop shell; a destructive kill must be precise.
+      const matches = umbriel.listProcesses().filter((entry) => !protectedPids.has(entry.processId) && entry.name.toLowerCase() === wanted);
+      if (matches.length === 0) return errorResult(`kill_process: no process named ${JSON.stringify(args.name)} is running (EXACT image name; this server/host excluded)`);
       const results = matches.map((entry) => ({ name: entry.name, pid: entry.processId, result: killProcess(entry.processId) }));
       const killed = results.filter((entry) => entry.result === 'killed').length;
-      return textResult(`killed ${killed}/${matches.length} matching ${JSON.stringify(args.name)}: ${results.map((entry) => `${entry.name}#${entry.pid}=${entry.result}`).join(', ')}`);
+      return textResult(`killed ${killed}/${matches.length} named ${JSON.stringify(args.name)}: ${results.map((entry) => `${entry.name}#${entry.pid}=${entry.result}`).join(', ')}`);
     }
     return errorResult('kill_process: provide {pid} or {name}');
   },

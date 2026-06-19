@@ -26,7 +26,7 @@ function assert(condition: boolean, message: string): void {
 }
 
 type Rpc = { id?: number; result?: { isError?: boolean; content?: { text?: string }[] } };
-function connect(profile: string): { call: (m: string, p: unknown) => Promise<Rpc>; kill: () => void } {
+function connect(profile: string): { call: (m: string, p: unknown) => Promise<Rpc>; kill: () => void; pid: number } {
   const proc = Bun.spawn(['bun', 'run', `${import.meta.dir}/../mcp.ts`], { stdin: 'pipe', stdout: 'pipe', stderr: 'ignore', env: { ...Bun.env, UMBRIEL_PROFILE: profile } });
   const reader = proc.stdout.getReader();
   const decoder = new TextDecoder();
@@ -59,7 +59,7 @@ function connect(profile: string): { call: (m: string, p: unknown) => Promise<Rp
     proc.stdin.flush();
     return new Promise((resolve) => pending.set(id, resolve));
   };
-  return { call, kill: () => proc.kill() };
+  return { call, kill: () => proc.kill(), pid: proc.pid };
 }
 const textOf = (m: Rpc): string => m.result?.content?.[0]?.text ?? '';
 
@@ -83,7 +83,7 @@ try {
   await Bun.sleep(400);
   const byName = textOf(await full.call('tools/call', { name: 'kill_process', arguments: { name: 'ping.exe' } }));
   await Bun.sleep(200);
-  assert(/killed \d+\/\d+ matching/.test(byName) && !alive(p2.pid), `kill_process {name} terminates every match (${JSON.stringify(byName)})`);
+  assert(/killed \d+\/\d+ named/.test(byName) && !alive(p2.pid), `kill_process {name} terminates every exact-name match (${JSON.stringify(byName)})`);
 
   // (3) access-denied on an elevated process — NOT killed
   const lsass = listProcesses().find((p) => /lsass/i.test(p.name))!;
@@ -94,7 +94,19 @@ try {
   const notFound = await full.call('tools/call', { name: 'kill_process', arguments: { pid: 999999 } });
   assert(notFound.result?.isError === true && /no such process/.test(textOf(notFound)), 'kill_process on a non-existent pid reports not-found');
 
-  // (5) os-gated: not exposed under safe
+  // (5) SECURITY: an empty/whitespace name is rejected (no empty-needle mass-kill)
+  const empty = await full.call('tools/call', { name: 'kill_process', arguments: { name: '   ' } });
+  assert(empty.result?.isError === true && /non-empty/.test(textOf(empty)), 'kill_process {name:"   "} is rejected (no empty-needle mass-kill)');
+
+  // (6) SECURITY: a short substring matches NO exact image — it cannot fan out to csrss/services/lsass
+  const broad = await full.call('tools/call', { name: 'kill_process', arguments: { name: 's' } });
+  assert(broad.result?.isError === true && /no process named/.test(textOf(broad)), 'kill_process {name:"s"} matches no EXACT image (no substring fan-out to system processes)');
+
+  // (7) SECURITY: the server cannot be told to terminate itself (or its host)
+  const selfKill = await full.call('tools/call', { name: 'kill_process', arguments: { pid: full.pid } });
+  assert(selfKill.result?.isError === true && /refusing to terminate this server/.test(textOf(selfKill)), 'kill_process {pid:<own server>} is refused (self/host protection)');
+
+  // (8) os-gated: not exposed under safe
   await safe.call('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'kill', version: '1' } });
   const list = await safe.call('tools/list', {});
   const names = ((list as { result?: { tools?: { name: string }[] } }).result?.tools ?? []).map((t) => t.name);
