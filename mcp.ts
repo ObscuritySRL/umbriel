@@ -1075,7 +1075,10 @@ function invokeSmart(element: Element): string {
 /** Toggle a control FOCUS-CLEAN: a classic Win32 "Button" checkbox takes PostMessageW(BM_CLICK) (no foreground steal,
  *  works minimized/background — findings/32); everything else takes the UIA TogglePattern. BM_CLICK is posted, so read
  *  the settled state a tick later. */
-function toggleSmart(element: Element): string {
+function toggleSmart(element: Element, desired?: boolean): string {
+  // Declarative SET: when `desired` is given, fire the flip ONLY if the control is not already in that state —
+  // idempotent (a retried set-to-on never flips back off), so "ensure checked" is ONE call, no inspect-then-branch.
+  if (desired !== undefined && element.toggleState === (desired ? 1 : 0)) return `already ${desired ? 'on' : 'off'} (no-op)`; // UIA ToggleState: 0 Off, 1 On
   if (isClassicButton(element)) {
     const before = element.toggleState;
     postButtonClick(element.nativeWindowHandle);
@@ -1547,8 +1550,8 @@ const TOOLS: McpTool[] = [
   {
     name: 'toggle',
     category: 'input',
-    description: 'Toggle a checkbox or toggle button via the UIA Toggle pattern (cursor-free).',
-    inputSchema: { type: 'object', properties: { element: { type: 'string', description: ELEMENT_DESC }, ref: { type: 'string', description: REF_DESC } }, required: ['ref'] },
+    description: 'Toggle a checkbox or toggle button via the UIA Toggle pattern (cursor-free). Pass {state:true|false} to SET a known state idempotently (no flip if already there) instead of blindly flipping — one call, no inspect-then-branch.',
+    inputSchema: { type: 'object', properties: { element: { type: 'string', description: ELEMENT_DESC }, ref: { type: 'string', description: REF_DESC }, state: { type: 'boolean', description: 'Optional desired state — true = on/checked, false = off. Sets idempotently (no-op if already there). Omit to flip.' } }, required: ['ref'] },
   },
   {
     name: 'expand',
@@ -2299,7 +2302,8 @@ const HANDLERS: Record<string, ToolHandler> = {
     const element = resolveRef(requireString(args, 'ref'));
     assertActionable(element, 'toggle'); // Playwright-class enabled gate — toggling a disabled control is a silent no-op
     const target = named(element);
-    const outcome = patternAction('toggle', () => toggleSmart(element)); // a classic Win32 "Button" checkbox goes through focus-clean BM_CLICK (UIA TogglePattern steals foreground — findings/32)
+    const desired = typeof args.state === 'boolean' ? args.state : undefined; // {state} → idempotent SET; omit → flip
+    const outcome = patternAction('toggle', () => toggleSmart(element, desired)); // a classic Win32 "Button" checkbox goes through focus-clean BM_CLICK (UIA TogglePattern steals foreground — findings/32)
     return withSnapshot(`${outcome} ${target}`);
   },
   expand: (args) => {
