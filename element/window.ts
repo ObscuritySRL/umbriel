@@ -223,6 +223,48 @@ export function openPath(path: string): boolean {
 }
 
 const TOKEN_QUERY = 0x0000_0008;
+const TOKEN_ELEVATION = 20; // TOKEN_INFORMATION_CLASS::TokenElevation
+const TOKEN_ELEVATION_TYPE = 18; // TOKEN_INFORMATION_CLASS::TokenElevationType (1 default, 2 full/elevated, 3 limited/UAC-filtered)
+
+export interface UserContext {
+  name: string; // the current user's account name
+  integrity: string; // the current process's integrity level (low/medium/high/system)
+  elevated: boolean; // running AS administrator right now (an elevated token)
+  elevationType: 'default' | 'full' | 'limited'; // UAC: default (no split token), full (already elevated), limited (a UAC-filtered admin who CAN elevate)
+}
+
+/** The current user's security context — account name, the process integrity level, whether it is ELEVATED (running as
+ *  admin) and its UAC elevation type — so an AI knows its OWN access before attempting a privileged action, without
+ *  shelling to `whoami`. `elevationType` of full/limited means the user IS an administrator; default + not elevated is a
+ *  standard user (or a UAC-off / built-in-admin session). */
+export function currentUser(): UserContext {
+  let name = '';
+  const nameSize = Buffer.alloc(4);
+  nameSize.writeUInt32LE(256, 0); // capacity in WCHARs
+  const nameBuffer = Buffer.alloc(512);
+  if (Advapi32.GetUserNameW(nameBuffer.ptr!, nameSize.ptr!) !== 0) {
+    const chars = nameSize.readUInt32LE(0); // includes the trailing NUL
+    name = chars > 1 ? nameBuffer.toString('utf16le', 0, (chars - 1) * 2) : '';
+  }
+  let elevated = false;
+  let elevationType: 'default' | 'full' | 'limited' = 'default';
+  const tokenOut = Buffer.alloc(8);
+  if (Advapi32.OpenProcessToken(Kernel32.GetCurrentProcess(), TOKEN_QUERY, tokenOut.ptr!) !== 0) {
+    const token = tokenOut.readBigUInt64LE(0);
+    try {
+      const value = Buffer.alloc(4);
+      const returned = Buffer.alloc(4);
+      if (Advapi32.GetTokenInformation(token, TOKEN_ELEVATION, value.ptr!, 4, returned.ptr!) !== 0) elevated = value.readUInt32LE(0) !== 0;
+      if (Advapi32.GetTokenInformation(token, TOKEN_ELEVATION_TYPE, value.ptr!, 4, returned.ptr!) !== 0) {
+        const type = value.readUInt32LE(0);
+        elevationType = type === 2 ? 'full' : type === 3 ? 'limited' : 'default';
+      }
+    } finally {
+      Kernel32.CloseHandle(token);
+    }
+  }
+  return { name, integrity: integrityLevel(Kernel32.GetCurrentProcessId()), elevated, elevationType };
+}
 const TOKEN_INTEGRITY_LEVEL = 0x0000_0019; // TokenInformationClass.TokenIntegrityLevel (25)
 
 /** The Windows integrity level of a process — 'system' | 'high' | 'medium' | 'low' | 'untrusted', or '' if the

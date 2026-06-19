@@ -23,6 +23,7 @@ import {
   clipboardSequence,
   cloakReason,
   closeWindow,
+  currentUser,
   coldTreeNote,
   ControlType,
   copyFromControl,
@@ -1704,6 +1705,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { sampleMs: { type: 'number', description: 'CPU sampling window in ms (default 200; larger = steadier reading)' } } },
   },
   {
+    name: 'current_user',
+    category: 'read',
+    description: 'The current user security context — account name, the process integrity level (low/medium/high/system), whether it is ELEVATED (running as administrator), and the UAC elevation type. Check this BEFORE a privileged action: a medium-integrity / non-elevated session cannot drive an elevated window, OpenProcess an elevated process, or write a protected path — so you know whether to expect access-denied rather than guessing.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'ocr',
     category: 'read',
     description:
@@ -2520,6 +2527,11 @@ const HANDLERS: Record<string, ToolHandler> = {
     const resources = await systemResources(typeof args.sampleMs === 'number' ? args.sampleMs : undefined);
     const usedMB = resources.memoryTotalMB - resources.memoryAvailableMB;
     return textResult(`CPU ${resources.cpuPercent}% · RAM ${(usedMB / 1024).toFixed(1)}/${(resources.memoryTotalMB / 1024).toFixed(1)} GB used (${resources.memoryLoadPercent}% load, ${(resources.memoryAvailableMB / 1024).toFixed(1)} GB free) · ${resources.processes} processes · up ${Math.floor(resources.uptimeSeconds / 3600)}h${Math.floor((resources.uptimeSeconds % 3600) / 60)}m`);
+  },
+  current_user: () => {
+    const user = currentUser();
+    const admin = user.elevated || user.elevationType === 'limited';
+    return textResult(`user ${JSON.stringify(user.name)} · ${user.integrity} integrity · ${user.elevated ? 'ELEVATED (running as admin)' : 'not elevated'} · UAC ${user.elevationType}${admin ? ' (the user IS an administrator)' : ' (standard user — privileged actions will be access-denied)'}`);
   },
   ocr: async (args) => {
     const region = args.region;

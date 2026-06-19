@@ -154,6 +154,8 @@ export {
   captureWindowRGB,
   cloakReason,
   closeWindow,
+  currentUser,
+  type UserContext,
   findWindow,
   foregroundWindow,
   inputDesktopName,
