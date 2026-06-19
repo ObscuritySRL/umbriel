@@ -11,7 +11,7 @@
 // thread; dispatch is serialized so two calls never overlap the apartment. Newline-delimited JSON-RPC 2.0
 // over stdin/stdout (no SDK); every diagnostic goes to stderr.
 
-import { cpSync, mkdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync } from 'node:fs';
 import { appendFile, readdir } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 
@@ -1429,6 +1429,17 @@ function resolveFsPath(path: string): string {
   }
 }
 
+/** Translate a node:fs error code into a steered message (a remedy with the failure), matching the rest of mcp.ts —
+ *  rather than letting the raw ERRNO (ENOENT/ENOTEMPTY/…) reach the dispatch catch-all with no next step. The
+ *  `error as { code?: string }` narrowing mirrors resolveFsPath's own (node:fs errors carry a `.code`). */
+function fsError(operation: string, error: unknown): string {
+  const code = (error as { code?: string }).code;
+  if (code === 'ENOENT') return `${operation}: no such path`;
+  if (code === 'ENOTEMPTY' || code === 'ENOTDIR') return `${operation}: the directory is not empty — pass {recursive:true} to delete the whole tree`;
+  if (code === 'EEXIST' || code === 'EPERM') return `${operation}: the destination already exists and is a different kind (file vs directory), or is read-only — choose a new name or delete it first`;
+  return `${operation}: ${error instanceof Error ? error.message : String(error)}`;
+}
+
 // These per-property descriptions are inlined into many tool schemas (REF_DESC ×29, ELEMENT_DESC ×23), so every
 // extra char is paid N times on the fixed tools/list payload the model reads each session. Keep only the
 // load-bearing point-of-use directive; the full ref contract lives ONCE in INSTRUCTIONS (and stale refs are
@@ -2105,14 +2116,14 @@ const TOOLS: McpTool[] = [
   {
     name: 'copy_file',
     category: 'fs',
-    description: 'Copy a file or a directory tree from {from} to {to} natively, no copy/xcopy shell. Gated behind the "fs" policy category; both paths restricted to UMBRIEL_FS_ROOT when set.',
-    inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['from', 'to'] },
+    description: 'Copy a file or a directory tree from {from} to {to} natively, no copy/xcopy shell. Refuses if {to} already exists unless {overwrite:true}. Gated behind the "fs" policy category; both paths restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' }, overwrite: { type: 'boolean', description: 'Replace the destination if it already exists (default false)' } }, required: ['from', 'to'] },
   },
   {
     name: 'move_file',
     category: 'fs',
-    description: 'Move/rename a file or directory from {from} to {to} natively (rename, or copy+delete across volumes), no move shell. Gated behind the "fs" policy category; both paths restricted to UMBRIEL_FS_ROOT when set.',
-    inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['from', 'to'] },
+    description: 'Move/rename a file or directory from {from} to {to} natively (rename, or copy+delete across volumes), no move shell. Refuses if {to} already exists unless {overwrite:true}. Gated behind the "fs" policy category; both paths restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' }, overwrite: { type: 'boolean', description: 'Replace the destination if it already exists (default false)' } }, required: ['from', 'to'] },
   },
   {
     name: 'delete_file',
@@ -3441,34 +3452,54 @@ const HANDLERS: Record<string, ToolHandler> = {
   },
   make_dir: (args) => {
     const path = resolveFsPath(requireString(args, 'path'));
-    mkdirSync(path, { recursive: true });
-    return textResult(`created directory ${path}`);
+    try {
+      mkdirSync(path, { recursive: true });
+      return textResult(`created directory ${path}`);
+    } catch (error) {
+      return errorResult(fsError('make_dir', error));
+    }
   },
   copy_file: (args) => {
     const from = resolveFsPath(requireString(args, 'from'));
     const to = resolveFsPath(requireString(args, 'to'));
-    cpSync(from, to, { recursive: statSync(from).isDirectory() }); // recursive only for a directory tree
-    return textResult(`copied ${from} → ${to}`);
+    const destExisted = existsSync(to);
+    if (destExisted && args.overwrite !== true) return errorResult(`copy_file: destination ${to} already exists — pass {overwrite:true} to replace it`);
+    try {
+      cpSync(from, to, { recursive: statSync(from).isDirectory(), force: true }); // recursive only for a directory tree; overwrite already gated above
+      return textResult(`copied ${from} → ${to}${destExisted ? ' (overwrote existing)' : ''}`);
+    } catch (error) {
+      return errorResult(fsError('copy_file', error));
+    }
   },
   move_file: (args) => {
     const from = resolveFsPath(requireString(args, 'from'));
     const to = resolveFsPath(requireString(args, 'to'));
+    const destExisted = existsSync(to);
+    if (destExisted && args.overwrite !== true) return errorResult(`move_file: destination ${to} already exists — pass {overwrite:true} to replace it`);
     try {
-      renameSync(from, to);
+      try {
+        renameSync(from, to);
+      } catch (error) {
+        if ((error as { code?: string }).code !== 'EXDEV') throw error; // cross-volume rename fails — copy the tree then remove the source
+        cpSync(from, to, { recursive: statSync(from).isDirectory(), force: true });
+        rmSync(from, { recursive: true });
+      }
+      return textResult(`moved ${from} → ${to}${destExisted ? ' (overwrote existing)' : ''}`);
     } catch (error) {
-      if ((error as { code?: string }).code !== 'EXDEV') throw error; // cross-volume rename fails — copy the tree then remove the source
-      cpSync(from, to, { recursive: statSync(from).isDirectory() });
-      rmSync(from, { recursive: true });
+      return errorResult(fsError('move_file', error));
     }
-    return textResult(`moved ${from} → ${to}`);
   },
   delete_file: (args) => {
     const path = resolveFsPath(requireString(args, 'path'));
-    const stats = statSync(path);
-    if (!stats.isDirectory()) unlinkSync(path);
-    else if (args.recursive === true) rmSync(path, { recursive: true });
-    else rmdirSync(path); // empty dir only — throws on a non-empty dir without {recursive:true} (a safety floor)
-    return textResult(`deleted ${stats.isDirectory() ? 'directory' : 'file'} ${path}`);
+    try {
+      const isDirectory = statSync(path).isDirectory();
+      if (!isDirectory) unlinkSync(path);
+      else if (args.recursive === true) rmSync(path, { recursive: true });
+      else rmdirSync(path); // empty dir only — a non-empty dir errors with a {recursive:true} steer (a safety floor)
+      return textResult(`deleted ${isDirectory ? 'directory' : 'file'} ${path}`);
+    } catch (error) {
+      return errorResult(fsError('delete_file', error));
+    }
   },
 };
 

@@ -86,6 +86,19 @@ try {
   await call('delete_file', { path: 'sub' });
   assert(!existsSync(join(root, 'sub')), 'delete_file removes an empty directory');
 
+  // --- overwrite is opt-in (no silent data loss), and a non-empty delete is steered (not a raw ERRNO) ---
+  await call('copy_file', { from: 'src.txt', to: 'dst.txt' });
+  const noOverwrite = await call('copy_file', { from: 'src.txt', to: 'dst.txt' });
+  assert(isErr(noOverwrite) && /already exists/.test(textOf(noOverwrite)), 'copy_file refuses to overwrite an existing destination without {overwrite:true}');
+  const withOverwrite = await call('copy_file', { from: 'src.txt', to: 'dst.txt', overwrite: true });
+  assert(!isErr(withOverwrite) && /overwrote existing/.test(textOf(withOverwrite)), 'copy_file {overwrite:true} replaces the destination and says so');
+  await call('make_dir', { path: 'tree' });
+  await call('copy_file', { from: 'src.txt', to: 'tree/f.txt' });
+  const nonEmpty = await call('delete_file', { path: 'tree' });
+  assert(isErr(nonEmpty) && /\{recursive:true\}/.test(textOf(nonEmpty)) && !/ENOTEMPTY/.test(textOf(nonEmpty)), 'delete_file on a non-empty dir is steered to {recursive:true} (not a raw ENOTEMPTY)');
+  await call('delete_file', { path: 'tree', recursive: true });
+  assert(!existsSync(join(root, 'tree')), 'delete_file {recursive:true} removes the tree');
+
   // --- sandbox ESCAPES must be refused, with NO filesystem effect ---
   const outsideDir = join(root, '..', `umbriel-escape-${proc.pid}`);
   const escape1 = await call('make_dir', { path: `../umbriel-escape-${proc.pid}` });
