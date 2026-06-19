@@ -25,6 +25,10 @@ import {
   closeWindow,
   controlService,
   listServices,
+  getEnv,
+  listEnv,
+  setEnv,
+  parseScope,
   currentUser,
   coldTreeNote,
   ControlType,
@@ -2118,6 +2122,18 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Service short name (e.g. "Spooler", not the display name)' }, action: { type: 'string', enum: ['query', 'start', 'stop'], description: 'default query' } }, required: ['name'] },
   },
   {
+    name: 'get_env',
+    category: 'read',
+    description: 'Read an environment variable, or list all, in a scope: {scope:"process"} (this server\'s live env), "user" (HKCU\\Environment — persists for your account), "machine" (HKLM — system-wide). Give {name} for one, omit it to list every variable in the scope. Natively — no set/echo shell.',
+    inputSchema: { type: 'object', properties: { scope: { type: 'string', enum: ['process', 'user', 'machine'] }, name: { type: 'string', description: 'Variable name; omit to list every variable in the scope' } }, required: ['scope'] },
+  },
+  {
+    name: 'set_env',
+    category: 'os',
+    description: 'Set or delete an environment variable in a scope (no setx/reg/PowerShell). {scope:"user"} writes HKCU\\Environment + broadcasts WM_SETTINGCHANGE so it PERSISTS across reboots and new processes inherit it (set JAVA_HOME, add to PATH); "machine" writes HKLM (needs elevation → clean access-denied); "process" is transient (this server + its children). Pass {value} to set, or {delete:true} to remove. Gated behind the "os" policy category; destructive.',
+    inputSchema: { type: 'object', properties: { scope: { type: 'string', enum: ['process', 'user', 'machine'] }, name: { type: 'string' }, value: { type: 'string', description: 'The value to set (omit and pass delete:true to remove)' }, delete: { type: 'boolean', description: 'Remove the variable instead of setting it' } }, required: ['scope', 'name'] },
+  },
+  {
     name: 'registry_get',
     category: 'os',
     description: 'Read ONE Windows registry value natively (no reg query / Get-ItemProperty shell): an install path, an OS/app version, a policy or HKCU preference. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {value} the value name (omit for the key default). Returns the typed value (REG_SZ/DWORD/QWORD/MULTI_SZ/BINARY decoded). Gated behind the "os" policy category.',
@@ -3464,6 +3480,27 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (result === 'denied') return errorResult(`control_service: "${name}" access-denied — start/stop usually need elevation (see current_user)`);
     if (result === 'not-found') return errorResult(`control_service: no service named "${name}"`);
     return textResult(`${name}: ${result}`);
+  },
+  get_env: (args) => {
+    const scope = parseScope(args.scope);
+    if (scope === null) return errorResult('get_env: scope must be process | user | machine');
+    if (typeof args.name === 'string') {
+      const value = getEnv(scope, args.name);
+      return value === null ? errorResult(`get_env: ${scope} env var ${args.name} is not set`) : textResult(`${args.name}=${value}`);
+    }
+    const all = listEnv(scope);
+    const names = Object.keys(all).sort();
+    return textResult(names.length === 0 ? `(no ${scope} env vars)` : names.map((name) => `${name}=${all[name]}`).join('\n'));
+  },
+  set_env: (args) => {
+    const scope = parseScope(args.scope);
+    if (scope === null) return errorResult('set_env: scope must be process | user | machine');
+    const name = requireString(args, 'name');
+    if (args.delete === true) {
+      return setEnv(scope, name, null) ? textResult(`deleted ${scope} env var ${name}`) : errorResult(`set_env: could not delete ${scope} env var ${name} (not set, or access-denied — machine scope needs elevation; see current_user)`);
+    }
+    if (typeof args.value !== 'string') return errorResult('set_env: provide {value} to set, or {delete:true} to remove');
+    return setEnv(scope, name, args.value) ? textResult(`set ${scope} ${name}=${args.value}${scope === 'process' ? ' (this process + its children)' : ' (persisted + broadcast)'}`) : errorResult(`set_env: could not set ${scope} env var ${name} (access-denied — machine scope needs elevation; see current_user)`);
   },
   registry_get: (args) => {
     const hive = parseHive(requireString(args, 'hive'));

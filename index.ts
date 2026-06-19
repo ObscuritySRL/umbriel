@@ -102,8 +102,9 @@ export { windowDesktopId, windowOnCurrentDesktop } from './desktop/desktop';
 export { type DiffNode, diffTrees, refsRenumbered, type RenameChange, renderDiff, type StateChange, type TreeChange, type TreeDiff } from './element/diff';
 export { attach, Element, focused, fromHandle, fromPoint, launch, root, type StateExpectation, Window } from './element/element';
 export { killProcess, listProcesses, type PriorityClass, setProcessPriority, suspendProcess, systemResources, type SystemResources, waitForProcess, waitForProcessGone, waitForWindow, waitForWindowGone, watchWindows, type WindowEvent, type WindowEventType, type WindowMatch, type WindowWatcher } from './desktop/events';
-export { parseHive, registryGet, registryList, type RegistryData, type RegistryHive, type RegistryValue } from './desktop/registry';
+export { parseHive, registryDeleteValue, registryGet, registryList, registrySetString, type RegistryData, type RegistryHive, type RegistryValue } from './desktop/registry';
 export { controlService, listServices, type ServiceAction, type ServiceEntry } from './desktop/services';
+export { type EnvScope, getEnv, listEnv, parseScope, setEnv } from './desktop/env';
 export { type IdleOptions, waitForIdle } from './desktop/idle';
 export { isJavaWindow, javaInvoke, type JavaNode, javaSetText, type JavaTarget, javaTree, renderJavaTree } from './element/jab';
 export {

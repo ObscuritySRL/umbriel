@@ -108,3 +108,29 @@ export function registryList(hive: RegistryHive, key: string): { subkeys: string
     Advapi32.RegCloseKey(handle);
   }
 }
+
+/** Set a string (REG_SZ / REG_EXPAND_SZ) value on an EXISTING key. true on success, false on access-denied / error.
+ *  (env_var's user/machine persistent writes go through here — the Environment keys always exist, so no create.) */
+export function registrySetString(hive: RegistryHive, key: string, valueName: string, value: string, expandable: boolean): boolean {
+  const handle = openKey(hive, key, RegKeyAccessRights.KEY_SET_VALUE);
+  if (handle === 0n) return false;
+  try {
+    const name = Buffer.from(`${valueName}\0`, 'utf16le');
+    const data = Buffer.from(`${value}\0`, 'utf16le');
+    return Advapi32.RegSetValueExW(handle, name.ptr!, 0, expandable ? RegType.REG_EXPAND_SZ : RegType.REG_SZ, data.ptr!, data.length) === ERROR_SUCCESS;
+  } finally {
+    Advapi32.RegCloseKey(handle);
+  }
+}
+
+/** Delete a registry value. true on success, false on access-denied / not-found. */
+export function registryDeleteValue(hive: RegistryHive, key: string, valueName: string): boolean {
+  const handle = openKey(hive, key, RegKeyAccessRights.KEY_SET_VALUE);
+  if (handle === 0n) return false;
+  try {
+    const name = Buffer.from(`${valueName}\0`, 'utf16le');
+    return Advapi32.RegDeleteValueW(handle, name.ptr!) === ERROR_SUCCESS;
+  } finally {
+    Advapi32.RegCloseKey(handle);
+  }
+}
