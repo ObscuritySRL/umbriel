@@ -105,6 +105,7 @@
     "example:element-capture-occlusion": "bun ./example/element-capture-occlusion.integration.test.ts",
     "example:element-drag-to": "bun ./example/element-drag-to.integration.test.ts",
     "example:env-var": "bun ./example/env-var.integration.test.ts",
+    "example:event-log": "bun ./example/event-log.integration.test.ts",
     "example:expand-range": "bun ./example/expand-range.integration.test.ts",
     "example:explorer-in-the-dark": "bun ./example/explorer-in-the-dark.integration.test.ts",
     "example:file-ops": "bun ./example/file-ops.integration.test.ts",

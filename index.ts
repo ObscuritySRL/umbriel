@@ -105,6 +105,7 @@ export { killProcess, listProcesses, type PriorityClass, type ProcessInfo, proce
 export { parseHive, registryDeleteValue, registryGet, registryList, registrySetString, type RegistryData, type RegistryHive, type RegistryValue } from './desktop/registry';
 export { controlService, listServices, type ServiceAction, type ServiceEntry } from './desktop/services';
 export { type EnvScope, getEnv, listEnv, parseScope, setEnv } from './desktop/env';
+export { type EventLogLevel, type EventLogRecord, readEventLog } from './desktop/eventlog';
 export { type IdleOptions, waitForIdle } from './desktop/idle';
 export { isJavaWindow, javaInvoke, type JavaNode, javaSetText, type JavaTarget, javaTree, renderJavaTree } from './element/jab';
 export {
