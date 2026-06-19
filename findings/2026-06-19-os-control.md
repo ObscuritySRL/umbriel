@@ -58,12 +58,15 @@ snapshot instead. (Benchmarks: .scratch/bench-resources.ts, bench-fs.ts, probe-k
    is unusable for a full enumeration today. Used the non-Ex EnumServicesStatusW (no group arg, correctly nullable) and
    recover the pid per-service via control_service. FIX upstream: mark pszGroupName `_In_opt_` → `LPCWSTR | NULL`, then
    list_services could carry the pid per row. Still a wall as of this session.
-5. **env_var** (read / os) — a SPECIALIZATION of registry (HKCU\Environment + HKLM Session Manager) + a process-scope
-   Bun.env branch (the ONE genuine FFI-vs-Bun split: Bun.env wins for process scope, FFI registry for user/machine) +
-   a WM_SETTINGCHANGE broadcast. Build AFTER registry (then it's a thin specialization). All bound + proven.
+5. **get_env + set_env** (read / os) — SHIPPED (ba24467). desktop/env.ts + registry write primitives
+   (registrySetString/registryDeleteValue). user/machine persist via the registry + WM_SETTINGCHANGE broadcast;
+   process via process.env + SetEnvironmentVariableW. Verified live (USER set→read→delete roundtrip, machine denied).
+   Fixed a consistency bug found live (process read via Bun.env vs write via SetEnvironmentVariableW = different views).
 
-Sequencing: registry → process-control → services → env (env reuses registry). None duplicate a shipped tool; every
-binding verified callable this session.
+**Panel-B queue COMPLETE — all 5 shipped.** Remaining OPTIONAL follow-ups (not yet built): a general `registry_set`
+MCP tool (the scoped write primitives exist + are proven; exposing arbitrary registry write needs a deliberate security
+pass), and `process_info` (read companion: GetProcessTimes/handle/working-set + parent→child tree). Next Panel-B sweep
+should hunt for NEW gaps beyond this queue (e.g. scheduled tasks, event log, network adapters, clipboard history).
 
 ## Owner-reserved (flagged, NOT fixed)
 
