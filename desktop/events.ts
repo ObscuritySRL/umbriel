@@ -32,6 +32,9 @@ const OBJID_WINDOW = 0;
 const CHILDID_SELF = 0;
 const GA_ROOT = 2;
 const TH32CS_SNAPPROCESS = 0x0000_0002;
+const TH32CS_SNAPTHREAD = 0x0000_0004;
+const THREAD_SUSPEND_RESUME = 0x0000_0002;
+const PROCESS_SET_INFORMATION = 0x0000_0200;
 const INVALID_HANDLE = 0xffff_ffff_ffff_ffffn;
 const PROCESS_TERMINATE = 0x0001;
 
@@ -260,6 +263,63 @@ export function killProcess(processId: number): 'killed' | 'denied' | 'not-found
   if (handle === 0n) return listProcesses().some((process) => process.processId === processId) ? 'denied' : 'not-found';
   try {
     return Kernel32.TerminateProcess(handle, 1) !== 0 ? 'killed' : 'denied';
+  } finally {
+    Kernel32.CloseHandle(handle);
+  }
+}
+
+export type PriorityClass = 'idle' | 'below' | 'normal' | 'above' | 'high';
+const PRIORITY_CLASSES: Record<PriorityClass, number> = { idle: 0x40, below: 0x4000, normal: 0x20, above: 0x8000, high: 0x80 };
+const THREADENTRY32_SIZE = 28; // dwSize, cntUsage, th32ThreadID@8, th32OwnerProcessID@12, tpBasePri, tpDeltaPri, dwFlags
+
+/**
+ * SUSPEND or RESUME every thread of a process via the toolhelp thread snapshot — freeze a runaway/installer without
+ * killing it, then thaw it (no `pssuspend`/PowerShell, and ntdll's NtSuspendProcess isn't bound). Returns the count of
+ * threads acted on, or 'denied' (its threads are elevated/protected from this medium-integrity host), or 'not-found'
+ * (no such process). `resume` selects ResumeThread over SuspendThread.
+ */
+export function suspendProcess(processId: number, resume: boolean): number | 'denied' | 'not-found' {
+  const snapshot = Kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD, 0);
+  if (snapshot === INVALID_HANDLE || snapshot === 0n) return 'denied';
+  try {
+    const entry = Buffer.alloc(THREADENTRY32_SIZE);
+    entry.writeUInt32LE(THREADENTRY32_SIZE, 0); // dwSize
+    let acted = 0;
+    let denied = 0;
+    let found = false;
+    let ok = Kernel32.Thread32First(snapshot, entry.ptr!);
+    while (ok !== 0) {
+      if (entry.readUInt32LE(12) === processId) {
+        // th32OwnerProcessID
+        found = true;
+        const handle = Kernel32.OpenThread(THREAD_SUSPEND_RESUME, 0, entry.readUInt32LE(8)); // th32ThreadID
+        if (handle === 0n) denied += 1;
+        else {
+          const previous = resume ? Kernel32.ResumeThread(handle) : Kernel32.SuspendThread(handle);
+          if (previous === 0xffff_ffff) denied += 1;
+          else acted += 1; // (DWORD)-1 is the failure sentinel; otherwise the prior suspend count
+          Kernel32.CloseHandle(handle);
+        }
+      }
+      ok = Kernel32.Thread32Next(snapshot, entry.ptr!);
+    }
+    if (!found) return 'not-found';
+    return acted === 0 && denied > 0 ? 'denied' : acted;
+  } finally {
+    Kernel32.CloseHandle(snapshot);
+  }
+}
+
+/**
+ * Set a process's scheduling priority class (renice a CPU hog to `idle`/`below` so the foreground stays responsive, or
+ * raise a stalled job) via OpenProcess(PROCESS_SET_INFORMATION) → SetPriorityClass. 'denied' if the process can't be
+ * opened (elevated/protected), 'not-found' if it isn't running.
+ */
+export function setProcessPriority(processId: number, priority: PriorityClass): 'set' | 'denied' | 'not-found' {
+  const handle = Kernel32.OpenProcess(PROCESS_SET_INFORMATION, 0, processId);
+  if (handle === 0n) return listProcesses().some((process) => process.processId === processId) ? 'denied' : 'not-found';
+  try {
+    return Kernel32.SetPriorityClass(handle, PRIORITY_CLASSES[priority]) !== 0 ? 'set' : 'denied';
   } finally {
     Kernel32.CloseHandle(handle);
   }

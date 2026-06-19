@@ -94,6 +94,8 @@ import {
   selectAllInControl,
   selectorToString,
   setControlText,
+  setProcessPriority,
+  suspendProcess,
   type Selector,
   snapWindow,
   systemResources,
@@ -2096,6 +2098,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Exact process id to terminate' }, name: { type: 'string', minLength: 1, description: 'EXACT image name (case-insensitive, e.g. "notepad.exe") — terminates ALL processes with that exact name' } } },
   },
   {
+    name: 'manage_process',
+    category: 'os',
+    description: 'Control a live process by {pid} WITHOUT killing it (no pssuspend/PowerShell): {action:"suspend"} freezes EVERY thread (pause a runaway/installer to inspect, or let the foreground recover), {action:"resume"} thaws it, {action:"priority", priority} renices it (drop a CPU hog to idle, or raise a stalled job). Never targets this server or its host. Reports the threads acted on / access-denied (elevated/protected — see current_user) / not-found. Gated behind the "os" policy category; destructive.',
+    inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Process id to control' }, action: { type: 'string', enum: ['suspend', 'resume', 'priority'], description: 'suspend/resume freeze-thaw every thread; priority renices' }, priority: { type: 'string', enum: ['idle', 'below', 'normal', 'above', 'high'], description: 'Required for action:"priority"' } }, required: ['pid', 'action'] },
+  },
+  {
     name: 'registry_get',
     category: 'os',
     description: 'Read ONE Windows registry value natively (no reg query / Get-ItemProperty shell): an install path, an OS/app version, a policy or HKCU preference. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {value} the value name (omit for the key default). Returns the typed value (REG_SZ/DWORD/QWORD/MULTI_SZ/BINARY decoded). Gated behind the "os" policy category.',
@@ -3408,6 +3416,26 @@ const HANDLERS: Record<string, ToolHandler> = {
       return textResult(`killed ${killed}/${matches.length} named ${JSON.stringify(args.name)}: ${results.map((entry) => `${entry.name}#${entry.pid}=${entry.result}`).join(', ')}`);
     }
     return errorResult('kill_process: provide {pid} or {name}');
+  },
+  manage_process: (args) => {
+    if (typeof args.pid !== 'number') return errorResult('manage_process: provide {pid}');
+    if (args.pid === process.pid || args.pid === process.ppid) return errorResult('manage_process: refusing to suspend/reprioritize this server or its host process');
+    const action = typeof args.action === 'string' ? args.action : '';
+    if (action === 'suspend' || action === 'resume') {
+      const result = suspendProcess(args.pid, action === 'resume');
+      if (result === 'denied') return errorResult(`manage_process: pid ${args.pid} access-denied — its threads are elevated/protected (see current_user)`);
+      if (result === 'not-found') return errorResult(`manage_process: pid ${args.pid}: no such process`);
+      return textResult(`${action === 'resume' ? 'resumed' : 'suspended'} pid ${args.pid} (${result} thread${result === 1 ? '' : 's'})`);
+    }
+    if (action === 'priority') {
+      const priority = typeof args.priority === 'string' ? args.priority : '';
+      if (priority !== 'idle' && priority !== 'below' && priority !== 'normal' && priority !== 'above' && priority !== 'high') return errorResult('manage_process: priority must be idle | below | normal | above | high');
+      const result = setProcessPriority(args.pid, priority);
+      if (result === 'denied') return errorResult(`manage_process: pid ${args.pid} access-denied — elevated/protected (see current_user)`);
+      if (result === 'not-found') return errorResult(`manage_process: pid ${args.pid}: no such process`);
+      return textResult(`set pid ${args.pid} priority to ${priority}`);
+    }
+    return errorResult('manage_process: action must be suspend | resume | priority');
   },
   registry_get: (args) => {
     const hive = parseHive(requireString(args, 'hive'));
