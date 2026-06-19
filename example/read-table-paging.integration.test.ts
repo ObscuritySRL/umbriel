@@ -78,6 +78,12 @@ try {
       assert(/…\(rows 1–\d+ of \d+; \d+ more — next page with startRow:4\)/.test(page0), `page 0 footer names the next startRow (got: ${JSON.stringify(page0.split('\n').find((l) => l.startsWith('…'))?.slice(0, 70))})`);
       assert(firstRow(page0) !== firstRow(page4) && firstRow(page4).length > 0, 'startRow:4 returns a DIFFERENT window of rows (real forward paging, not a re-read from row 0)');
       assert(/…\(rows 5–\d+ of \d+/.test(page4), `page startRow:4 footer reports rows 5.. (got: ${JSON.stringify(page4.split('\n').find((l) => l.startsWith('…'))?.slice(0, 70))})`);
+
+      // Past-the-end overshoot must NOT print an inverted "rows 51–50 of 50" range — it gets a clear "past the last row".
+      const pastEnd = textOf(await call('tools/call', { name: 'read_table', arguments: { ref, maxRows: 4, startRow: 100000 } }));
+      const footer = pastEnd.split('\n').find((line) => line.startsWith('…')) ?? '';
+      const rangeMatch = /rows (\d+)–(\d+)/.exec(footer);
+      assert(/past the last row/.test(footer) && !(rangeMatch !== null && Number(rangeMatch[1]) > Number(rangeMatch[2])), `read_table past the end shows a clear "past the last row" footer, never an inverted range (got: ${JSON.stringify(footer)})`);
     }
   }
 } finally {

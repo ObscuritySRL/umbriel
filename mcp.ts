@@ -1384,11 +1384,13 @@ function renderTable(table: TableData): string {
   const end = table.startRow + table.rows.length; // exclusive end of this page
   const more = table.totalRows - end; // rows after this page
   const footer =
-    more > 0
-      ? `\n…(rows ${table.startRow + 1}–${end} of ${table.totalRows}; ${more} more — next page with startRow:${end})`
-      : table.startRow > 0
-        ? `\n…(rows ${table.startRow + 1}–${end} of ${table.totalRows})`
-        : ''; // a top-anchored full read keeps the no-footer behavior
+    table.rows.length === 0 && table.startRow > 0
+      ? `\n…(no rows here — startRow ${table.startRow} is at/past the last row; the grid has ${table.totalRows} row(s) — page from startRow:0)` // empty page past the end: never print an inverted "rows 51–50" range
+      : more > 0
+        ? `\n…(rows ${table.startRow + 1}–${end} of ${table.totalRows}; ${more} more — next page with startRow:${end})`
+        : table.startRow > 0
+          ? `\n…(rows ${table.startRow + 1}–${end} of ${table.totalRows})`
+          : ''; // a top-anchored full read keeps the no-footer behavior
   return `${lines.join('\n')}${footer}`;
 }
 
@@ -3097,7 +3099,7 @@ const HANDLERS: Record<string, ToolHandler> = {
       : errorResult('copy_image: could not set the clipboard image');
   },
   copy_files: (args) => {
-    const paths = Array.isArray(args.paths) ? args.paths.filter((path): path is string => typeof path === 'string') : [];
+    const paths = Array.isArray(args.paths) ? args.paths.filter((path): path is string => typeof path === 'string' && path.trim().length > 0) : []; // drop blank/whitespace entries: a [""] would stage a ZERO-file HDROP yet report a confident success
     if (paths.length === 0) return errorResult('copy_files: provide a non-empty {paths} array of absolute file paths');
     const move = args.move === true;
     return umbriel.writeClipboardFiles(paths, move)
