@@ -247,6 +247,51 @@ export function listProcesses(): { processId: number; name: string }[] {
   }
 }
 
+export interface SystemResources {
+  memoryTotalMB: number; // total physical RAM
+  memoryAvailableMB: number; // free physical RAM
+  memoryLoadPercent: number; // 0-100, the OS's own memory-pressure figure
+  cpuPercent: number; // system-wide CPU busy %, sampled over `sampleMs`
+  uptimeSeconds: number; // since last boot
+  processes: number; // running process count
+}
+
+/** One GetSystemTimes sample (FILETIME 100ns counts). Kernel time INCLUDES idle. */
+function cpuTimes(): { idle: number; busy: number } {
+  const idle = Buffer.alloc(8);
+  const kernel = Buffer.alloc(8);
+  const user = Buffer.alloc(8);
+  Kernel32.GetSystemTimes(idle.ptr!, kernel.ptr!, user.ptr!);
+  const idleTicks = Number(idle.readBigUInt64LE(0));
+  return { idle: idleTicks, busy: Number(kernel.readBigUInt64LE(0)) + Number(user.readBigUInt64LE(0)) - idleTicks };
+}
+
+/**
+ * System resources — RAM (GlobalMemoryStatusEx), system-wide CPU % (two GetSystemTimes samples `sampleMs` apart),
+ * uptime (GetTickCount64) and the process count — so an AI can answer "how much memory / CPU are we using?" natively,
+ * never shelling out to PowerShell. Benchmark-chosen: the @bun-win32 FFI path beats node:os here (GlobalMemoryStatusEx
+ * 1.3x vs os.freemem; GetSystemTimes 12.3x vs os.cpus()). Read-only; safe to call on a background/locked desktop.
+ */
+export async function systemResources(sampleMs = 200): Promise<SystemResources> {
+  const memory = Buffer.alloc(64); // MEMORYSTATUSEX: dwLength@0, dwMemoryLoad@4, ullTotalPhys@8, ullAvailPhys@16, …
+  memory.writeUInt32LE(64, 0); // dwLength MUST be set before the call
+  Kernel32.GlobalMemoryStatusEx(memory.ptr!);
+  const before = cpuTimes();
+  await Bun.sleep(Math.max(1, sampleMs));
+  const after = cpuTimes();
+  const idleDelta = after.idle - before.idle;
+  const busyDelta = after.busy - before.busy;
+  const totalDelta = idleDelta + busyDelta;
+  return {
+    memoryTotalMB: Math.round(Number(memory.readBigUInt64LE(8)) / 1048576),
+    memoryAvailableMB: Math.round(Number(memory.readBigUInt64LE(16)) / 1048576),
+    memoryLoadPercent: memory.readUInt32LE(4),
+    cpuPercent: totalDelta > 0 ? Math.max(0, Math.min(100, Math.round((busyDelta / totalDelta) * 100))) : 0,
+    uptimeSeconds: Math.round(Number(Kernel32.GetTickCount64()) / 1000),
+    processes: listProcesses().length,
+  };
+}
+
 /**
  * Resolve with the process id when a process whose image name contains `imageName` (case-insensitive) is
  * running — immediately if already present, otherwise polled until it starts. Rejects after `timeout` ms. Use it

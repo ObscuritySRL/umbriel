@@ -89,6 +89,7 @@ import {
   setControlText,
   type Selector,
   snapWindow,
+  systemResources,
   systemStatus,
   type Snapshot,
   type StateExpectation,
@@ -1697,6 +1698,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: {} },
   },
   {
+    name: 'system_resources',
+    category: 'read',
+    description: 'System resource usage — total/available RAM + memory-load %, system-wide CPU % (sampled over a short interval), uptime, and the running-process count. Answer "how much memory / CPU are we using?" natively, no shell. Read-only; works on a background/locked desktop.',
+    inputSchema: { type: 'object', properties: { sampleMs: { type: 'number', description: 'CPU sampling window in ms (default 200; larger = steadier reading)' } } },
+  },
+  {
     name: 'ocr',
     category: 'read',
     description:
@@ -2508,6 +2515,11 @@ const HANDLERS: Record<string, ToolHandler> = {
     ].filter((warning): warning is string => warning !== null);
     const notes = [status.remoteSession ? 'remote (RDP) session' : null, status.onBattery ? 'on battery (idle sleep / display-off may be enabled)' : null].filter((note): note is string => note !== null);
     return textResult(`system: input desktop ${JSON.stringify(status.inputDesktop)}, ${status.monitors} monitor(s)${notes.length > 0 ? `, ${notes.join(', ')}` : ''}; foreground ${JSON.stringify(status.foreground)}\n${warnings.length > 0 ? warnings.join('\n') : 'nominal — the desktop is interactive and readable'}`);
+  },
+  system_resources: async (args) => {
+    const resources = await systemResources(typeof args.sampleMs === 'number' ? args.sampleMs : undefined);
+    const usedMB = resources.memoryTotalMB - resources.memoryAvailableMB;
+    return textResult(`CPU ${resources.cpuPercent}% · RAM ${(usedMB / 1024).toFixed(1)}/${(resources.memoryTotalMB / 1024).toFixed(1)} GB used (${resources.memoryLoadPercent}% load, ${(resources.memoryAvailableMB / 1024).toFixed(1)} GB free) · ${resources.processes} processes · up ${Math.floor(resources.uptimeSeconds / 3600)}h${Math.floor((resources.uptimeSeconds % 3600) / 60)}m`);
   },
   ocr: async (args) => {
     const region = args.region;

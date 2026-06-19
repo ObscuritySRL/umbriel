@@ -5,7 +5,7 @@ import { dispatch } from './input/computer';
 import { elementAt, listMonitors, postClickAt, scrollAt } from './input/coords';
 import { diffTrees } from './element/diff';
 import { attach, focused, fromPoint, launch, root } from './element/element';
-import { listProcesses, waitForProcess, waitForProcessGone, waitForWindow, waitForWindowGone, watchWindows } from './desktop/events';
+import { listProcesses, systemResources, waitForProcess, waitForProcessGone, waitForWindow, waitForWindowGone, watchWindows } from './desktop/events';
 import { waitForIdle } from './desktop/idle';
 import { clickAt, isKeyDown, postKey, postText, sendKeys, setControlText, type } from './input/input';
 import { locateOnScreen } from './capture/match';
@@ -36,6 +36,7 @@ export const umbriel = {
   launch,
   listMonitors,
   listProcesses,
+  systemResources,
   locateOnScreen,
   msaaTree,
   ocrBitmap,
@@ -99,7 +100,7 @@ export {
 export { windowDesktopId, windowOnCurrentDesktop } from './desktop/desktop';
 export { type DiffNode, diffTrees, refsRenumbered, type RenameChange, renderDiff, type StateChange, type TreeChange, type TreeDiff } from './element/diff';
 export { attach, Element, focused, fromHandle, fromPoint, launch, root, type StateExpectation, Window } from './element/element';
-export { listProcesses, waitForProcess, waitForProcessGone, waitForWindow, waitForWindowGone, watchWindows, type WindowEvent, type WindowEventType, type WindowMatch, type WindowWatcher } from './desktop/events';
+export { listProcesses, systemResources, type SystemResources, waitForProcess, waitForProcessGone, waitForWindow, waitForWindowGone, watchWindows, type WindowEvent, type WindowEventType, type WindowMatch, type WindowWatcher } from './desktop/events';
 export { type IdleOptions, waitForIdle } from './desktop/idle';
 export { isJavaWindow, javaInvoke, type JavaNode, javaSetText, type JavaTarget, javaTree, renderJavaTree } from './element/jab';
 export {
