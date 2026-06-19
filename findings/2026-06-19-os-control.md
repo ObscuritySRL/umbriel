@@ -41,10 +41,10 @@ snapshot instead. (Benchmarks: .scratch/bench-resources.ts, bench-fs.ts, probe-k
 ## Panel-B capability hunt (ranked, bindings PROVEN live this session — build queue)
 
 1. **stat_path** (fs, read) — SHIPPED (39827f6). node:fs size/times + FFI GetFileAttributesW for the attribute bits.
-2. **registry_get / registry_list / registry_set** (os) — Advapi32 RegOpenKeyExW/RegQueryValueExW(two-pass sizing)/
-   RegEnumKeyExW/RegEnumValueW/RegCreateKeyExW/RegSetValueExW/RegCloseKey, all bound + proven (read HKLM ProductName →
-   "Windows 10 Home"). Decode by RegType (SZ/EXPAND_SZ/DWORD/QWORD/MULTI_SZ/BINARY). FFI-only (no Bun registry API).
-   The Windows config surface — highest broad value after stat_path. **Build next.**
+2. **registry_get / registry_list** (os) — SHIPPED (544e8b2). desktop/registry.ts: RegOpenKeyExW + two-pass
+   RegQueryValueExW + RegEnumKeyExW/RegEnumValueW, decoded by RegType. **registry_set (write) is the remaining half**
+   — RegCreateKeyExW + RegSetValueExW (bound); gate carefully (write is more sensitive — likely HKCU-confined or an
+   explicit allow), with the kill_process security lesson. Build registry_set next or fold into the env_var work.
 3. **manage_process + process_info** (os / read) — suspend/resume via the thread-snapshot freeze
    (CreateToolhelp32Snapshot(TH32CS_SNAPTHREAD)→OpenThread(THREAD_SUSPEND_RESUME)→Suspend/ResumeThread), priority via
    OpenProcess(PROCESS_SET_INFORMATION)→SetPriorityClass; process_info via GetProcessTimes/GetProcessHandleCount/
