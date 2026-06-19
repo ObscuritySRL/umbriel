@@ -85,9 +85,9 @@ snapshot instead. (Benchmarks: .scratch/bench-resources.ts, bench-fs.ts, probe-k
    Application for an unknown name — documented), {count}/{level} filter. Verified live (real System records, error
    filter). Note: the `message` is the raw insertion strings, not the FormatMessage-formatted sentence (would need the
    source's message DLL) — still diagnostic.
-3. **get_displays** (read, value 7) — user32 EnumDisplayDevicesW/EnumDisplaySettingsW; DEVMODEW tail anchored to dmSize
-   (bpp@dmSize-20, width@-16, height@-12, freq@-4). Proven live (5120x1440@240). Resolution/refresh/topology for
-   capture+placement.
+3. **get_displays** (read) — SHIPPED (15e95af). desktop/display.ts: user32 EnumDisplayDevicesW + EnumDisplaySettingsW,
+   DEVMODEW at absolute offsets (bpp@168, width@172, height@176, freq@184), DISPLAY_DEVICEW StateFlags@324. Verified live
+   (5120x1440@240, 32-bit, RTX 4090). Resolution/refresh/topology for capture+placement.
 4. **registry_set** (os, value 6.5) — DEFER: generalizes the proven scoped write primitives, but arbitrary HKLM/HKCU
    write is the most destructive surface; needs confirm-flag + per-type validation + careful review. Build after the reads.
 5. **list_scheduled_tasks** (read, value 7) — OWNER-DECISION: buildable on combase + umbriel's OWN vcall/guid COM
