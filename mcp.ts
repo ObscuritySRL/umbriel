@@ -23,6 +23,8 @@ import {
   clipboardSequence,
   cloakReason,
   closeWindow,
+  controlService,
+  listServices,
   currentUser,
   coldTreeNote,
   ControlType,
@@ -2104,6 +2106,18 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Process id to control' }, action: { type: 'string', enum: ['suspend', 'resume', 'priority'], description: 'suspend/resume freeze-thaw every thread; priority renices' }, priority: { type: 'string', enum: ['idle', 'below', 'normal', 'above', 'high'], description: 'Required for action:"priority"' } }, required: ['pid', 'action'] },
   },
   {
+    name: 'list_services',
+    category: 'read',
+    description: 'List every Windows service (name, display name, current state: running/stopped/start-pending/…) natively — no sc query / Get-Service shell. The discovery half of service control; use control_service for a specific service\'s owning pid and to start/stop it.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'control_service',
+    category: 'os',
+    description: 'Query / start / stop a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state / denied / not-found. Gated behind the "os" policy category; destructive on start/stop.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Service short name (e.g. "Spooler", not the display name)' }, action: { type: 'string', enum: ['query', 'start', 'stop'], description: 'default query' } }, required: ['name'] },
+  },
+  {
     name: 'registry_get',
     category: 'os',
     description: 'Read ONE Windows registry value natively (no reg query / Get-ItemProperty shell): an install path, an OS/app version, a policy or HKCU preference. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {value} the value name (omit for the key default). Returns the typed value (REG_SZ/DWORD/QWORD/MULTI_SZ/BINARY decoded). Gated behind the "os" policy category.',
@@ -3436,6 +3450,20 @@ const HANDLERS: Record<string, ToolHandler> = {
       return textResult(`set pid ${args.pid} priority to ${priority}`);
     }
     return errorResult('manage_process: action must be suspend | resume | priority');
+  },
+  list_services: () => {
+    const services = listServices();
+    if (services.length === 0) return errorResult('list_services: could not enumerate services (the SCM refused enumerate access)');
+    return textResult(`${services.length} services:\n${services.map((entry) => `  ${entry.state.padEnd(15)} ${entry.name}${entry.displayName && entry.displayName !== entry.name ? ` — ${entry.displayName}` : ''}`).join('\n')}`);
+  },
+  control_service: (args) => {
+    const name = requireString(args, 'name');
+    const action = typeof args.action === 'string' ? args.action : 'query';
+    if (action !== 'query' && action !== 'start' && action !== 'stop') return errorResult('control_service: action must be query | start | stop');
+    const result = controlService(name, action);
+    if (result === 'denied') return errorResult(`control_service: "${name}" access-denied — start/stop usually need elevation (see current_user)`);
+    if (result === 'not-found') return errorResult(`control_service: no service named "${name}"`);
+    return textResult(`${name}: ${result}`);
   },
   registry_get: (args) => {
     const hive = parseHive(requireString(args, 'hive'));

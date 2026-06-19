@@ -148,6 +148,7 @@
     "example:safety-floor": "bun ./example/safety-floor.integration.test.ts",
     "example:select-option": "bun ./example/select-option.integration.test.ts",
     "example:selftest": "bun ./example/umbriel.selftest.ts",
+    "example:services": "bun ./example/services.integration.test.ts",
     "example:set-of-marks": "bun ./example/set-of-marks.ts",
     "example:snapshot-economy": "bun ./example/snapshot-economy.integration.test.ts",
     "example:snapshot-fallback": "bun ./example/snapshot-fallback.integration.test.ts",
