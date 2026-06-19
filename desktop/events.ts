@@ -33,6 +33,8 @@ const CHILDID_SELF = 0;
 const GA_ROOT = 2;
 const TH32CS_SNAPPROCESS = 0x0000_0002;
 const INVALID_HANDLE = 0xffff_ffff_ffff_ffffn;
+const SYNCHRONIZE = 0x0010_0000; // OpenProcess access right required to WaitForSingleObject on a process handle
+const WAIT_OBJECT_0 = 0x0000_0000; // WaitForSingleObject return: the handle is signaled (the process has exited)
 
 export type WindowEventType = 'appear' | 'close' | 'focus' | 'minimize' | 'restore' | 'rename';
 
@@ -262,5 +264,34 @@ export async function waitForProcess(imageName: string, options: { timeout?: num
     if (hit !== undefined) return hit.processId;
     if ((Bun.nanoseconds() - start) / 1e6 >= timeout) throw new Error(`waitForProcess: "${imageName}" did not start within ${timeout}ms`);
     await Bun.sleep(interval);
+  }
+}
+
+/**
+ * Resolve when every process whose image name contains `imageName` (case-insensitive) has EXITED — immediately if none
+ * is running. Opens a SYNCHRONIZE handle to each CURRENT match and polls the signaled handle(s) with a non-blocking
+ * WaitForSingleObject(h, 0): O(1) per tick, never re-enumerating the whole process table, never blocking the event
+ * loop. The mirror of waitForProcess — gate work on a windowless job FINISHING (an installer, a build, a conversion,
+ * a launched app closing) where waitForWindowGone falsely resolves at once because the job owns no visible window.
+ * Rejects after `timeout` ms (default 30s).
+ */
+export async function waitForProcessGone(imageName: string, options: { timeout?: number; interval?: number } = {}): Promise<void> {
+  const timeout = options.timeout ?? 30000;
+  const interval = options.interval ?? 200;
+  const needle = imageName.toLowerCase();
+  const matches = listProcesses().filter((process) => process.name.toLowerCase().includes(needle));
+  if (matches.length === 0) return; // nothing matching is running — already gone
+  const handles = matches.map((process) => Kernel32.OpenProcess(SYNCHRONIZE, 0, process.processId)).filter((handle) => handle !== 0n);
+  if (handles.length === 0) return; // none could be opened (each exited between snapshot and OpenProcess, or access-denied) — treat as gone
+  try {
+    const start = Bun.nanoseconds();
+    for (;;) {
+      // WAIT_OBJECT_0 ⇒ that process has exited (a dead process's handle stays signaled); any other value ⇒ still running
+      if (handles.every((handle) => Kernel32.WaitForSingleObject(handle, 0) === WAIT_OBJECT_0)) return;
+      if ((Bun.nanoseconds() - start) / 1e6 >= timeout) throw new Error(`waitForProcessGone: a process matching "${imageName}" was still running after ${timeout}ms`);
+      await Bun.sleep(interval);
+    }
+  } finally {
+    for (const handle of handles) Kernel32.CloseHandle(handle);
   }
 }

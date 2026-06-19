@@ -1671,10 +1671,10 @@ const TOOLS: McpTool[] = [
     name: 'wait_for_process',
     category: 'read',
     description:
-      'Wait until a process whose image name contains the given text is running (e.g. "chrome.exe"), then return its pid. Resolves immediately if already running. Use to trigger work the moment a process the agent is waiting on spawns. Pass {attach:true} to attach to the process\'s window and return its snapshot in ONE call (like launch_app) — falls back to the pid + a steer if its window has not painted yet.',
+      'Wait until a process whose image name contains the given text is running (e.g. "chrome.exe"), then return its pid. Resolves immediately if already running. Use to trigger work the moment a process the agent is waiting on spawns. Pass {gone:true} to instead wait until every matching process has EXITED (an installer / build / conversion / launched app FINISHING) — the right gate for a windowless job, where wait_for_window {gone} would falsely resolve at once. Pass {attach:true} to attach to the process\'s window and return its snapshot in ONE call (like launch_app) — falls back to the pid + a steer if its window has not painted yet.',
     inputSchema: {
       type: 'object',
-      properties: { attach: { type: 'boolean', description: "Attach to the process's window and return its snapshot in one call" }, name: { type: 'string' }, timeout: { type: 'number', description: 'Milliseconds (default 30000)' } },
+      properties: { attach: { type: 'boolean', description: "Attach to the process's window and return its snapshot in one call" }, gone: { type: 'boolean', description: 'Wait until every matching process has EXITED instead of started (installer/build/conversion/launched-app finishing); resolves immediately if none is running. Ignores attach.' }, name: { type: 'string' }, timeout: { type: 'number', description: 'Milliseconds (default 30000)' } },
       required: ['name'],
     },
   },
@@ -2442,7 +2442,12 @@ const HANDLERS: Record<string, ToolHandler> = {
   },
   wait_for_process: async (args) => {
     const name = requireString(args, 'name');
-    const pid = await umbriel.waitForProcess(name, { timeout: typeof args.timeout === 'number' ? args.timeout : 30000 });
+    const timeout = typeof args.timeout === 'number' ? args.timeout : 30000;
+    if (args.gone === true) {
+      await umbriel.waitForProcessGone(name, { timeout });
+      return textResult(`process gone: no process matching ${JSON.stringify(name)} is running anymore`);
+    }
+    const pid = await umbriel.waitForProcess(name, { timeout });
     if (args.attach !== true) return textResult(`process running: ${name} pid=${pid}`);
     // One-call gate→attach→snapshot. attachByProcess throws if the process has no visible window YET (it spawned but
     // its UI is still painting) — report the pid + steer to wait_for_window {process} so the agent gates on the window.
