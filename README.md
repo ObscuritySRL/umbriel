@@ -137,6 +137,7 @@ Because Umbriel is plain TypeScript over Bun's own FFI, it:
 
 - **Semantic first, pixels where there's no structure** — custom-draw, games, and WebGL surfaces fall back to the built-in pixel + OCR layer; everything with a tree gets exact semantic targeting.
 - **Synthetic typing and real clicks need an unlocked desktop** — `invoke`, reads, and `setValue` work even on a locked session, so prefer them.
+- **Minimized driving is for classic Win32 windows** — `invoke` / `setValue` / `toggle` keep working on a minimized or fully backgrounded classic Win32/HWND window, but a UWP/WinUI store app **suspends its UI thread and accessibility tree** when minimized (the tree reads empty and posted actions don't land until it's restored), so restore it first.
 - **Windows 10 or 11, Bun ≥ 1.1** — Windows-only and Bun-only, the owned trade-off for zero dependencies and in-process speed.
 
 ## Going deeper
