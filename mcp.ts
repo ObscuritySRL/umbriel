@@ -90,6 +90,7 @@ import {
   renderSnapshot,
   renderWindowTree,
   parseHive,
+  readEventLog,
   registryGet,
   registryList,
   type RegistryData,
@@ -2117,6 +2118,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Process id to introspect' } }, required: ['pid'] },
   },
   {
+    name: 'read_event_log',
+    category: 'read',
+    description: 'Read the newest records from a Windows event log natively (no Get-WinEvent/wevtutil shell) — THE canonical record of crashes, service failures, driver faults, and unexpected shutdowns; answer "why did X crash / what failed last night". {log} ∈ System|Application|Security|Setup (default System), {count} newest (default 20, max 100), {level} ∈ error|warning|all (default all). Each record: time, type, source, event id, and the raw insertion strings. System/Application read without elevation; Security needs admin.',
+    inputSchema: { type: 'object', properties: { log: { type: 'string', enum: ['System', 'Application', 'Security', 'Setup'], description: 'Log name (default System)' }, count: { type: 'number', description: 'Newest N records (default 20, max 100)' }, level: { type: 'string', enum: ['error', 'warning', 'all'], description: 'Filter by severity (default all)' } } },
+  },
+  {
     name: 'list_services',
     category: 'read',
     description: 'List every Windows service (name, display name, current state: running/stopped/start-pending/…) natively — no sc query / Get-Service shell. The discovery half of service control; use control_service for a specific service\'s owning pid and to start/stop it.',
@@ -3481,6 +3488,14 @@ const HANDLERS: Record<string, ToolHandler> = {
     const detail = info.startTime !== '' ? `started ${info.startTime}, cpu ${info.cpuKernelMs + info.cpuUserMs}ms (kernel ${info.cpuKernelMs} + user ${info.cpuUserMs}), working-set ${info.workingSetMB}MB (peak ${info.peakWorkingSetMB}MB), handles ${info.handleCount}` : '(detail unavailable — elevated/protected; see current_user)';
     const children = info.children.length > 0 ? `children (${info.children.length}): ${info.children.map((child) => `${child.name}#${child.processId}`).join(', ')}` : '(no children)';
     return textResult(`${info.name} (pid ${info.processId}, parent ${info.parentProcessId})\n${detail}\n${children}`);
+  },
+  read_event_log: (args) => {
+    const log = typeof args.log === 'string' ? args.log : 'System';
+    const count = typeof args.count === 'number' && args.count > 0 ? Math.min(args.count, 100) : 20;
+    const level = args.level === 'error' || args.level === 'warning' || args.level === 'all' ? args.level : 'all';
+    const records = readEventLog(log, count, level);
+    if (records.length === 0) return errorResult(`read_event_log: no ${level === 'all' ? '' : `${level} `}records in the "${log}" log (or it could not be opened — Security needs elevation; see current_user)`);
+    return textResult(records.map((record) => `[${record.time}] ${record.type.toUpperCase()} ${record.source} (id ${record.eventId}, rec#${record.recordNumber})${record.message !== '' ? `: ${record.message.slice(0, 300)}` : ''}`).join('\n'));
   },
   list_services: () => {
     const services = listServices();
