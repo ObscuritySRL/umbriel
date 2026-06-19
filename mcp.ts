@@ -11,7 +11,7 @@
 // thread; dispatch is serialized so two calls never overlap the apartment. Newline-delimited JSON-RPC 2.0
 // over stdin/stdout (no SDK); every diagnostic goes to stderr.
 
-import { realpathSync } from 'node:fs';
+import { cpSync, mkdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync } from 'node:fs';
 import { appendFile, readdir } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 
@@ -2096,6 +2096,30 @@ const TOOLS: McpTool[] = [
     description: 'List a directory (names + dir/file kind). Gated behind the "fs" policy category; restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
+  {
+    name: 'make_dir',
+    category: 'fs',
+    description: 'Create a directory (and any missing parents) natively, no mkdir shell. Gated behind the "fs" policy category; restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
+  },
+  {
+    name: 'copy_file',
+    category: 'fs',
+    description: 'Copy a file or a directory tree from {from} to {to} natively, no copy/xcopy shell. Gated behind the "fs" policy category; both paths restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['from', 'to'] },
+  },
+  {
+    name: 'move_file',
+    category: 'fs',
+    description: 'Move/rename a file or directory from {from} to {to} natively (rename, or copy+delete across volumes), no move shell. Gated behind the "fs" policy category; both paths restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' } }, required: ['from', 'to'] },
+  },
+  {
+    name: 'delete_file',
+    category: 'fs',
+    description: 'Delete a file, or an EMPTY directory; pass {recursive:true} to delete a directory tree. Natively, no del/rmdir shell. DESTRUCTIVE — gated behind the "fs" policy category; restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean', description: 'Delete a non-empty directory tree (default false — an empty dir or a file only)' } }, required: ['path'] },
+  },
 ];
 
 // Annotation policy: read tools are read-only; the rest mutate state (destructive); os tools reach beyond the
@@ -3409,6 +3433,37 @@ const HANDLERS: Record<string, ToolHandler> = {
   list_dir: async (args) => {
     const entries = await readdir(resolveFsPath(requireString(args, 'path')), { withFileTypes: true });
     return textResult(entries.map((entry) => `${entry.isDirectory() ? 'd' : '-'} ${entry.name}`).join('\n') || '(empty directory)');
+  },
+  make_dir: (args) => {
+    const path = resolveFsPath(requireString(args, 'path'));
+    mkdirSync(path, { recursive: true });
+    return textResult(`created directory ${path}`);
+  },
+  copy_file: (args) => {
+    const from = resolveFsPath(requireString(args, 'from'));
+    const to = resolveFsPath(requireString(args, 'to'));
+    cpSync(from, to, { recursive: statSync(from).isDirectory() }); // recursive only for a directory tree
+    return textResult(`copied ${from} → ${to}`);
+  },
+  move_file: (args) => {
+    const from = resolveFsPath(requireString(args, 'from'));
+    const to = resolveFsPath(requireString(args, 'to'));
+    try {
+      renameSync(from, to);
+    } catch (error) {
+      if ((error as { code?: string }).code !== 'EXDEV') throw error; // cross-volume rename fails — copy the tree then remove the source
+      cpSync(from, to, { recursive: statSync(from).isDirectory() });
+      rmSync(from, { recursive: true });
+    }
+    return textResult(`moved ${from} → ${to}`);
+  },
+  delete_file: (args) => {
+    const path = resolveFsPath(requireString(args, 'path'));
+    const stats = statSync(path);
+    if (!stats.isDirectory()) unlinkSync(path);
+    else if (args.recursive === true) rmSync(path, { recursive: true });
+    else rmdirSync(path); // empty dir only — throws on a non-empty dir without {recursive:true} (a safety floor)
+    return textResult(`deleted ${stats.isDirectory() ? 'directory' : 'file'} ${path}`);
   },
 };
 
