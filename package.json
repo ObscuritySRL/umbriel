@@ -140,6 +140,7 @@
     "example:popup-windows": "bun ./example/popup-windows.integration.test.ts",
     "example:posted-click-dead-window-honest": "bun ./example/posted-click-dead-window-honest.integration.test.ts",
     "example:press-key-secret-not-journaled": "bun ./example/press-key-secret-not-journaled.integration.test.ts",
+    "example:process-info": "bun ./example/process-info.integration.test.ts",
     "example:qt-widget-tree": "bun ./example/qt-widget-tree.integration.test.ts",
     "example:read-control-text-fenced-redacted": "bun ./example/read-control-text-fenced-redacted.integration.test.ts",
     "example:read-table": "bun ./example/read-table.integration.test.ts",

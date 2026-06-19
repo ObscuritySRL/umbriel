@@ -35,6 +35,8 @@ const TH32CS_SNAPPROCESS = 0x0000_0002;
 const TH32CS_SNAPTHREAD = 0x0000_0004;
 const THREAD_SUSPEND_RESUME = 0x0000_0002;
 const PROCESS_SET_INFORMATION = 0x0000_0200;
+const PROCESS_QUERY_LIMITED_INFORMATION = 0x0000_1000;
+const FILETIME_UNIX_EPOCH_MS = 11_644_473_600_000; // ms between 1601-01-01 (FILETIME epoch) and 1970-01-01 (unix)
 const INVALID_HANDLE = 0xffff_ffff_ffff_ffffn;
 const PROCESS_TERMINATE = 0x0001;
 
@@ -323,6 +325,86 @@ export function setProcessPriority(processId: number, priority: PriorityClass): 
   } finally {
     Kernel32.CloseHandle(handle);
   }
+}
+
+export interface ProcessInfo {
+  processId: number;
+  name: string;
+  parentProcessId: number;
+  startTime: string; // ISO 8601, or '' if the detail handle was denied
+  cpuKernelMs: number;
+  cpuUserMs: number;
+  workingSetMB: number;
+  peakWorkingSetMB: number;
+  handleCount: number;
+  children: { processId: number; name: string }[];
+}
+
+/**
+ * Deep per-process detail by pid: name, parent pid, start time, CPU kernel/user ms, working-set + peak MB, open handle
+ * count, and the child list — so the AI can pick WHICH pid to kill/suspend/reprioritize (the runaway renderer, the
+ * leaking child) instead of guessing from a flat name list. name/parent/children come from ONE toolhelp snapshot
+ * (visible across integrity levels); the detail fields come from an OpenProcess(QUERY_LIMITED_INFORMATION) handle and
+ * read 0 when the process is elevated/protected (the snapshot facts still resolve). null if the pid isn't running.
+ */
+export function processInfo(processId: number): ProcessInfo | null {
+  const snapshot = Kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snapshot === INVALID_HANDLE || snapshot === 0n) return null;
+  let name = '';
+  let parentProcessId = 0;
+  let found = false;
+  const children: { processId: number; name: string }[] = [];
+  try {
+    const entry = Buffer.alloc(568); // PROCESSENTRY32W (x64): th32ProcessID @8, th32ParentProcessID @32, szExeFile @44
+    entry.writeUInt32LE(568, 0);
+    let ok = Kernel32.Process32FirstW(snapshot, entry.ptr!);
+    while (ok !== 0) {
+      const entryPid = entry.readUInt32LE(8);
+      const entryParent = entry.readUInt32LE(32);
+      const entryName = entry.subarray(44, 564).toString('utf16le').split('\0')[0] ?? '';
+      if (entryPid === processId) {
+        found = true;
+        name = entryName;
+        parentProcessId = entryParent;
+      }
+      if (entryParent === processId) children.push({ processId: entryPid, name: entryName });
+      ok = Kernel32.Process32NextW(snapshot, entry.ptr!);
+    }
+  } finally {
+    Kernel32.CloseHandle(snapshot);
+  }
+  if (!found) return null;
+  let startTime = '';
+  let cpuKernelMs = 0;
+  let cpuUserMs = 0;
+  let workingSetMB = 0;
+  let peakWorkingSetMB = 0;
+  let handleCount = 0;
+  const handle = Kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, processId);
+  if (handle !== 0n) {
+    try {
+      const creation = Buffer.alloc(8);
+      const exit = Buffer.alloc(8);
+      const kernel = Buffer.alloc(8);
+      const user = Buffer.alloc(8);
+      if (Kernel32.GetProcessTimes(handle, creation.ptr!, exit.ptr!, kernel.ptr!, user.ptr!) !== 0) {
+        startTime = new Date(Number(creation.readBigUInt64LE(0) / 10_000n) - FILETIME_UNIX_EPOCH_MS).toISOString();
+        cpuKernelMs = Number(kernel.readBigUInt64LE(0) / 10_000n);
+        cpuUserMs = Number(user.readBigUInt64LE(0) / 10_000n);
+      }
+      const handleOut = Buffer.alloc(4);
+      if (Kernel32.GetProcessHandleCount(handle, handleOut.ptr!) !== 0) handleCount = handleOut.readUInt32LE(0);
+      const memory = Buffer.alloc(72); // PROCESS_MEMORY_COUNTERS (x64): cb @0, PeakWorkingSetSize @8, WorkingSetSize @16
+      memory.writeUInt32LE(72, 0);
+      if (Kernel32.K32GetProcessMemoryInfo(handle, memory.ptr!, 72) !== 0) {
+        peakWorkingSetMB = Math.round(Number(memory.readBigUInt64LE(8)) / 1_048_576);
+        workingSetMB = Math.round(Number(memory.readBigUInt64LE(16)) / 1_048_576);
+      }
+    } finally {
+      Kernel32.CloseHandle(handle);
+    }
+  }
+  return { processId, name, parentProcessId, startTime, cpuKernelMs, cpuUserMs, workingSetMB, peakWorkingSetMB, handleCount, children };
 }
 
 export interface SystemResources {
