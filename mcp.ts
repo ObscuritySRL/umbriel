@@ -1606,12 +1606,13 @@ const TOOLS: McpTool[] = [
     name: 'wait_for',
     category: 'read',
     description:
-      'Wait until a control matching the selector APPEARS in the attached window (or, with gone:true, until it DISAPPEARS — the spinner / "Loading…" / progress-bar / just-dismissed-modal gate), then return a fresh snapshot. Pass state to instead retry until the match reaches a STATE (toggle on, value stuck, selected/expanded/enabled) — the desktop expect(locator).toBeChecked()/toHaveValue(), so you confirm an action landed without hand-rolling snapshot → parse → sleep → re-snapshot. On timeout, throws quoting the nearest candidates (appear), the still-present selector (gone), or the last-seen state (state).',
+      'Wait until a control matching the selector APPEARS in the attached window (or, with gone:true, until it DISAPPEARS — the spinner / "Loading…" / progress-bar / just-dismissed-modal gate), then return a fresh snapshot. Pass state to instead retry until the match reaches a STATE (toggle on, value stuck, selected/expanded/enabled) — the desktop expect(locator).toBeChecked()/toHaveValue(), so you confirm an action landed without hand-rolling snapshot → parse → sleep → re-snapshot. Target by selector, or by {ref, state} to await the EXACT control a ref denotes — the only way to wait on a control that has no unique selector (e.g. one of several identical buttons). On timeout, throws quoting the nearest candidates (appear), the still-present selector (gone), or the last-seen state (state).',
     inputSchema: {
       type: 'object',
       properties: {
         selector: SELECTOR_SCHEMA,
-        gone: { type: 'boolean', description: 'Wait for the control to DISAPPEAR instead of appear (spinner/loading/modal-dismissed).' },
+        ref: { type: 'string', description: REF_DESC },
+        gone: { type: 'boolean', description: 'Wait for the control to DISAPPEAR instead of appear (spinner/loading/modal-dismissed). Selector only — a ref cannot outlive its control.' },
         state: {
           type: 'object',
           description: 'Retry until the matching control reaches this state (all provided fields must hold at once) instead of merely appearing. Ignored when gone:true.',
@@ -1626,7 +1627,6 @@ const TOOLS: McpTool[] = [
         },
         timeout: { type: 'number', description: 'Milliseconds (default 5000)' },
       },
-      required: ['selector'],
     },
   },
   {
@@ -2372,8 +2372,18 @@ const HANDLERS: Record<string, ToolHandler> = {
     );
   },
   wait_for: async (args) => {
-    const selector = selectorFrom(args.selector);
     const timeout = typeof args.timeout === 'number' ? args.timeout : 5000;
+    if (typeof args.ref === 'string') {
+      // By REF: wait on the EXACT control the agent holds — the only way to await a control with no unique selector
+      // (find_and_act acts on it by ref, but selector-based waits hit findFirstMatch's first sibling). {state} only.
+      const element = resolveRef(args.ref);
+      if (args.state === undefined)
+        throw new Error('wait_for {ref} needs a {state} to wait on (e.g. {ref, state:{enabled:true}}) — a ref already denotes a PRESENT control, so there is nothing to wait to appear. To wait for a control to DISAPPEAR (gone), pass a {selector} (a ref cannot outlive the control it points to).');
+      const state = stateFrom(args.state);
+      await element.waitForOwnState({ ...state, timeout });
+      return withSnapshot(`reached ${JSON.stringify(state)} on ${named(element)}`);
+    }
+    const selector = selectorFrom(args.selector);
     if (args.gone === true) {
       await requireAttached().waitForGone(selector, { timeout });
       return withSnapshot(`gone: ${selectorToString(selector)}`);
