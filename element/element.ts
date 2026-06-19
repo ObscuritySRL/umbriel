@@ -775,8 +775,8 @@ export class Element {
   }
 
   /** Read a GridPattern container (data grid / details list / table) as headers + rows of text, or null if unsupported. */
-  readTable(maxRows?: number): TableData | null {
-    return readTable(this.ptr, maxRows);
+  readTable(maxRows?: number, startRow?: number): TableData | null {
+    return readTable(this.ptr, maxRows, startRow);
   }
 
   /** The cell Element at (row, column) of a GridPattern container — compose setValue()/invoke()/toggle() on it
