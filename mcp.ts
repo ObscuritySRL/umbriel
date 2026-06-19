@@ -48,6 +48,7 @@ import {
   maximizeWindow,
   middleClickAt,
   minimizeWindow,
+  moveTo,
   moveWindow,
   type MsaaNode,
   normalizeKey,
@@ -88,6 +89,7 @@ import {
   setControlText,
   type Selector,
   snapWindow,
+  systemStatus,
   type Snapshot,
   type StateExpectation,
   type TableData,
@@ -1688,6 +1690,13 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { filter: { type: 'string', description: 'Case-insensitive image-name substring' } } },
   },
   {
+    name: 'system_status',
+    category: 'read',
+    description:
+      "Report the environment signals that decide whether a read or capture is TRUSTWORTHY: a lock screen / UAC secure desktop (the user's apps are NOT readable or drivable until it clears), a running screensaver (display blanked), a headless 0-monitor or RDP session, AC vs battery, and the foreground window. Check this FIRST when a snapshot/capture comes back empty or a screenshot looks blank — do not conclude a control is \"missing\" if the desktop is actually locked, screensaved, or has no display.",
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
     name: 'ocr',
     category: 'read',
     description:
@@ -1890,6 +1899,13 @@ const TOOLS: McpTool[] = [
       },
       required: ['ref'],
     },
+  },
+  {
+    name: 'hover',
+    category: 'input',
+    description:
+      "Move the REAL mouse pointer onto a control (by {ref}) or a raw {x,y} and leave it there WITHOUT clicking — the Playwright locator.hover() / page.mouse.move() analogue. The only way to reveal hover-only UI: a tooltip that renders on WM_MOUSEMOVE, a hover-expand submenu/flyout, a hover-revealed row/tab button, or a hover-state to screenshot. Moves the real cursor (SetCursorPos), so it is NOT cursor-free and is refused under UMBRIEL_CURSOR=never. After hovering, desktop_snapshot or screenshot to see what appeared.",
+    inputSchema: { type: 'object', properties: { ref: { type: 'string', description: REF_DESC }, x: { type: 'number', description: 'Raw screen X (alternative to ref)' }, y: { type: 'number', description: 'Raw screen Y (with x)' } } },
   },
   {
     name: 'drag',
@@ -2483,6 +2499,16 @@ const HANDLERS: Record<string, ToolHandler> = {
       .sort((first, second) => first.name.localeCompare(second.name));
     return textResult(`${processes.length} process(es)${filter !== null ? ` matching ${JSON.stringify(filter)}` : ''}:\n${processes.map((process) => `  ${String(process.processId).padStart(6)}  ${process.name}`).join('\n')}`);
   },
+  system_status: () => {
+    const status = systemStatus();
+    const warnings = [
+      status.secureDesktop ? `⚠ a lock screen / UAC / secure desktop is up (input desktop ${JSON.stringify(status.inputDesktop)}) — the user's apps are NOT readable or drivable until it clears; do NOT treat a control as missing` : null,
+      status.screenSaverRunning ? '⚠ a screensaver is running — the display is blanked (apps still run, but a pixel capture may be black)' : null,
+      status.monitors === 0 ? '⚠ no monitors attached (headless) — captures may be blank' : null,
+    ].filter((warning): warning is string => warning !== null);
+    const notes = [status.remoteSession ? 'remote (RDP) session' : null, status.onBattery ? 'on battery (idle sleep / display-off may be enabled)' : null].filter((note): note is string => note !== null);
+    return textResult(`system: input desktop ${JSON.stringify(status.inputDesktop)}, ${status.monitors} monitor(s)${notes.length > 0 ? `, ${notes.join(', ')}` : ''}; foreground ${JSON.stringify(status.foreground)}\n${warnings.length > 0 ? warnings.join('\n') : 'nominal — the desktop is interactive and readable'}`);
+  },
   ocr: async (args) => {
     const region = args.region;
     let result: { text: string; lines: { text: string; bounds: { x: number; y: number; width: number; height: number }; words: { text: string; bounds: { x: number; y: number; width: number; height: number } }[] }[] };
@@ -2544,6 +2570,21 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (cursorDenied) return errorResult(`the posted ${button} click reached no window at ${x},${y} and the real-cursor fallback is disabled by UMBRIEL_CURSOR=never — target a control by ref (click/invoke) instead`);
     clickAt(x, y);
     return textResult(`clicked ${button} at ${x},${y} (real cursor fallback)`);
+  },
+  hover: (args) => {
+    if (cursorDenied) return errorResult('hover moves the REAL cursor (SetCursorPos) — disabled by UMBRIEL_CURSOR=never. There is no cursor-free hover; revealing hover-only UI needs the real pointer.');
+    let point: { x: number; y: number };
+    if (typeof args.ref === 'string') {
+      const element = resolveRef(args.ref);
+      const rect = element.boundingRectangle;
+      const resolved = element.clickablePoint ?? (rect.width > 0 && rect.height > 0 ? { x: Math.round(rect.x + rect.width / 2), y: Math.round(rect.y + rect.height / 2) } : null);
+      if (resolved === null) return errorResult('hover {ref}: the control has no on-screen point (0×0 bounds / off-screen) — reveal or scroll it into view first');
+      point = resolved;
+    } else {
+      point = { x: requireNumber(args, 'x'), y: requireNumber(args, 'y') };
+    }
+    moveTo(point.x, point.y);
+    return textResult(`moved the real cursor to ${point.x},${point.y} (hover, no click) — desktop_snapshot or screenshot to see any hover-revealed tooltip / flyout / hover button`);
   },
   click_text: async (args) => {
     const want = requireString(args, 'text').toLowerCase();
