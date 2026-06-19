@@ -80,10 +80,11 @@ snapshot instead. (Benchmarks: .scratch/bench-resources.ts, bench-fs.ts, probe-k
 **Panel-B capability hunt for NEW gaps** (all 5 buildable NOW on current deps, 0 need a new binding except network):
 1. **process_info** (read) — SHIPPED (0d2d106). value 9.5: deep per-pid detail (start/CPU/memory/handles + parent/child
    tree) so kill/suspend/priority are TARGETED not blind. kernel32, proven live.
-2. **read_event_log** (read, value 8) — advapi32 LEGACY OpenEventLogW/ReadEventLogW/CloseEventLog (a current dep; the
-   modern wevtapi is NOT). Decode EVENTLOGRECORD by hand (Length@0, RecordNumber@8, TimeGenerated@12, EventID@20,
-   EventType u16@24, SourceName@56). Proven live (decoded real System-log records). The crash/failure diagnosis blind
-   spot. **Build next.**
+2. **read_event_log** (read) — SHIPPED (1734d48). desktop/eventlog.ts: advapi32 legacy OpenEventLogW/ReadEventLogW/
+   CloseEventLog, EVENTLOG_BACKWARDS_READ, hand-decoded EVENTLOGRECORD. {log} enum (OpenEventLogW falls back to
+   Application for an unknown name — documented), {count}/{level} filter. Verified live (real System records, error
+   filter). Note: the `message` is the raw insertion strings, not the FormatMessage-formatted sentence (would need the
+   source's message DLL) — still diagnostic.
 3. **get_displays** (read, value 7) — user32 EnumDisplayDevicesW/EnumDisplaySettingsW; DEVMODEW tail anchored to dmSize
    (bpp@dmSize-20, width@-16, height@-12, freq@-4). Proven live (5120x1440@240). Resolution/refresh/topology for
    capture+placement.
