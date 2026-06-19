@@ -49,9 +49,15 @@ snapshot instead. (Benchmarks: .scratch/bench-resources.ts, bench-fs.ts, probe-k
    SetPriorityClass; self/host-excluded; denied/not-found mapping. Verified live (froze 6 threads, process stayed
    alive). **process_info (read) is the remaining companion** — GetProcessTimes/GetProcessHandleCount/
    K32GetProcessMemoryInfo + th32ParentProcessID tree (tells the AI WHICH child to freeze). Optional follow-up.
-4. **list_services + control_service** (read / os) — Advapi32 OpenSCManagerW/OpenServiceW/EnumServicesStatusExW/
-   QueryServiceStatusEx/StartServiceW/ControlService/CloseServiceHandle, all bound + proven (opened Dnscache, RUNNING;
-   enumerated 301 services). control half usually needs admin → clean 'denied' like kill_process. FFI-only.
+4. **list_services + control_service** (read / os) — SHIPPED (61e2592). desktop/services.ts. list_services via
+   EnumServicesStatusW (name/displayName/state); control_service via OpenServiceW + QueryServiceStatusEx (state + pid) /
+   StartServiceW / ControlService. Verified live (301 services, Dnscache running pid 2896, stop → denied medium IL).
+   **BINDING CONSTRAINT (upstream, D:\Projects\bun-win32):** EnumServicesStatusExW (the Ex variant, carries the pid per
+   row) types `pszGroupName` as non-nullable `LPCWSTR` — the generator missed its `_In_opt_`. NULL is REQUIRED for "all
+   services" (an empty string returns ONLY ungrouped — measured 252 vs 301), and casts are forbidden, so the Ex variant
+   is unusable for a full enumeration today. Used the non-Ex EnumServicesStatusW (no group arg, correctly nullable) and
+   recover the pid per-service via control_service. FIX upstream: mark pszGroupName `_In_opt_` → `LPCWSTR | NULL`, then
+   list_services could carry the pid per row. Still a wall as of this session.
 5. **env_var** (read / os) — a SPECIALIZATION of registry (HKCU\Environment + HKLM Session Manager) + a process-scope
    Bun.env branch (the ONE genuine FFI-vs-Bun split: Bun.env wins for process scope, FFI registry for user/machine) +
    a WM_SETTINGCHANGE broadcast. Build AFTER registry (then it's a thin specialization). All bound + proven.
