@@ -101,6 +101,7 @@
     "example:dense-tree-budget": "bun ./example/dense-tree-budget.integration.test.ts",
     "example:desktop-mcp": "bun ./example/desktop-mcp.ts",
     "example:drag-interpolated-stroke": "bun ./example/drag-interpolated-stroke.integration.test.ts",
+    "example:drag-stroke-modifiers": "bun ./example/drag-stroke-modifiers.integration.test.ts",
     "example:drive-in-the-dark": "bun ./example/drive-in-the-dark.ts",
     "example:element-capture-occlusion": "bun ./example/element-capture-occlusion.integration.test.ts",
     "example:element-drag-to": "bun ./example/element-drag-to.integration.test.ts",

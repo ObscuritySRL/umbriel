@@ -39,6 +39,7 @@ import {
   cutFromControl,
   diffTrees,
   doubleClickAt,
+  dragStroke,
   dragTo,
   type Element,
   encodePNG,
@@ -1969,7 +1970,7 @@ const TOOLS: McpTool[] = [
     name: 'drag',
     category: 'input',
     description:
-      'Press-drag-release. By DEFAULT uses the REAL mouse (drag-drop an icon/file, move a slider). {select:true} instead does a CURSOR-FREE drag (text selection / marquee-select) by posting mouse messages to an own-HWND {ref} control (classic Edit/RichEdit/ListView) — but it cannot drag-DROP (for a drop use the real-mouse default). Target raw points {fromX,fromY,toX,toY} or a ref start {ref,toX,toY}. Under UMBRIEL_CURSOR=never the real drag is disabled, but an own-HWND {ref} auto-falls-back to the cursor-free drag-select.',
+      'Press-drag-release. By DEFAULT uses the REAL mouse (drag-drop an icon/file, move a slider). {select:true} instead does a CURSOR-FREE drag (text selection / marquee-select) by posting mouse messages to an own-HWND {ref} control (classic Edit/RichEdit/ListView) — but it cannot drag-DROP (for a drop use the real-mouse default). Target raw points {fromX,fromY,toX,toY} or a ref start {ref,toX,toY}. Under UMBRIEL_CURSOR=never the real drag is disabled, but an own-HWND {ref} auto-falls-back to the cursor-free drag-select. For a Ctrl+drag (copy) / Shift+drag (constrain), or a lasso/curve/signature, pass {modifiers:[Control|Shift|Alt]} and/or a {path:[{x,y},…]} of waypoints (real cursor).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1981,6 +1982,8 @@ const TOOLS: McpTool[] = [
         toX: { type: 'number' },
         toY: { type: 'number' },
         select: { type: 'boolean', description: 'Cursor-free drag-SELECT (text / marquee) via posted mouse messages on an own-HWND {ref} — no real cursor; cannot drag-drop' },
+        path: { type: 'array', items: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' } }, required: ['x', 'y'] }, description: 'Real-cursor POLYLINE waypoints {x,y}[] (≥2) for a lasso / curve / signature / multi-segment drag — traced in order; replaces fromX/Y→toX/Y' },
+        modifiers: { type: 'array', items: { type: 'string', enum: ['Control', 'Shift', 'Alt'] }, description: 'Keys HELD during a real drag: Control (copy vs move), Shift (constrain / range-select), Alt' },
       },
     },
   },
@@ -3215,6 +3218,16 @@ const HANDLERS: Record<string, ToolHandler> = {
       if (owner !== 0n && postDragToHwnd(owner, fromX, fromY, toX, toY)) return withSnapshot(`drag-selected ${fromX},${fromY} → ${toX},${toY} cursor-free (posted — text selection / marquee, NOT a drag-drop)`);
       if (cursorDenied) return errorResult('drag needs the real cursor — disabled by UMBRIEL_CURSOR=never; a cursor-free drag-SELECT works ONLY on a {ref} to a control with its own window handle (a classic Edit/RichEdit/ListView)');
       return errorResult('cursor-free drag-select ({select:true}) needs a {ref} to a control with its own window handle (a classic Edit/RichEdit/ListView); for a raw-point drag or a drag-DROP, drop {select} to use the real cursor');
+    }
+    // A polyline PATH and/or held MODIFIERS (Ctrl+drag copy, Shift+constrain, lasso/curve) — gestures the 2-point
+    // unmodified dragTo can't express. Real cursor only (this branch is unreachable under cursorDenied — handled above).
+    const modifiers = Array.isArray(args.modifiers) ? args.modifiers.filter((modifier): modifier is string => typeof modifier === 'string') : [];
+    const isPoint = (candidate: unknown): candidate is { x: number; y: number } => typeof candidate === 'object' && candidate !== null && 'x' in candidate && 'y' in candidate && typeof candidate.x === 'number' && typeof candidate.y === 'number';
+    const path = Array.isArray(args.path) ? args.path.filter(isPoint) : [];
+    if (path.length >= 2 || modifiers.length > 0) {
+      const stroke = path.length >= 2 ? path : [{ x: fromX, y: fromY }, { x: toX, y: toY }];
+      dragStroke(stroke, modifiers);
+      return withSnapshot(`dragged ${path.length >= 2 ? `${stroke.length}-point path` : `${fromX},${fromY} → ${toX},${toY}`}${modifiers.length > 0 ? ` holding ${modifiers.join('+')}` : ''} (real cursor)`);
     }
     dragTo(fromX, fromY, toX, toY);
     return withSnapshot(`dragged ${fromX},${fromY} → ${toX},${toY} (real cursor)`);

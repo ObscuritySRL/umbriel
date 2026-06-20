@@ -225,6 +225,36 @@ export function dragTo(fromX: number, fromY: number, toX: number, toY: number, s
   User32.SendInput(1, up.ptr!, INPUT_SIZE);
 }
 
+/** Real-cursor drag along a POLYLINE path (>=2 points) with optional HELD modifiers (Control/Shift/Alt) — the gestures
+ *  a 2-point dragTo can't express: Ctrl+drag to copy (vs move), Shift+drag to constrain/range-select, Alt+drag for
+ *  special modes, and a curved/multi-segment stroke for a lasso, a signature, or a curved connector. Holds each modifier
+ *  BEFORE button-down and releases it AFTER button-up in a `finally`, so a throw never leaves a key stuck down. Real
+ *  cursor (foreground-gated), like dragTo; each segment is interpolated in `stepsPerSegment` moves to cross the OS drag
+ *  threshold and feed dragover. */
+export function dragStroke(points: ReadonlyArray<{ x: number; y: number }>, modifiers: readonly string[] = [], stepsPerSegment = 16): void {
+  if (points.length < 2) throw new Error('dragStroke needs at least 2 path points');
+  for (const modifier of modifiers) keyDown(modifier);
+  try {
+    const first = points[0];
+    User32.SetCursorPos(first.x, first.y);
+    const down = Buffer.alloc(INPUT_SIZE);
+    packMouseInput(down, 0, 0, 0, 0, MOUSEEVENTF_LEFTDOWN);
+    User32.SendInput(1, down.ptr!, INPUT_SIZE);
+    for (let index = 1; index < points.length; index += 1) {
+      const from = points[index - 1];
+      const to = points[index];
+      for (let step = 1; step <= stepsPerSegment; step += 1) User32.SetCursorPos(Math.round(from.x + ((to.x - from.x) * step) / stepsPerSegment), Math.round(from.y + ((to.y - from.y) * step) / stepsPerSegment));
+    }
+    const last = points[points.length - 1];
+    User32.SetCursorPos(last.x, last.y);
+    const up = Buffer.alloc(INPUT_SIZE);
+    packMouseInput(up, 0, 0, 0, 0, MOUSEEVENTF_LEFTUP);
+    User32.SendInput(1, up.ptr!, INPUT_SIZE);
+  } finally {
+    for (let index = modifiers.length - 1; index >= 0; index -= 1) keyUp(modifiers[index]);
+  }
+}
+
 /** Press a key down (no release) — pair with `keyUp`, or use `sendKeys` for a full chord. */
 export function keyDown(name: string): void {
   const keyCode = virtualKeyCode(name);
