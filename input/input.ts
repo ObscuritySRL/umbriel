@@ -233,6 +233,7 @@ export function dragTo(fromX: number, fromY: number, toX: number, toY: number, s
  *  threshold and feed dragover. */
 export function dragStroke(points: ReadonlyArray<{ x: number; y: number }>, modifiers: readonly string[] = [], stepsPerSegment = 16): void {
   if (points.length < 2) throw new Error('dragStroke needs at least 2 path points');
+  for (const modifier of modifiers) virtualKeyCode(modifier); // validate EVERY name first — a bad one throws before any key is pressed, so no half-pressed modifier escapes the finally release
   for (const modifier of modifiers) keyDown(modifier);
   try {
     const first = points[0];
