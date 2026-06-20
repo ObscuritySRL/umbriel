@@ -27,12 +27,21 @@ The "don't coast on convergence" pass. After three harden convergences, an aggre
 - **`5f5a0f9` feat(desktop/service): control_service config** — start-type/binary/account via QueryServiceConfigW
   (reuses readPackedWide); a new control_service action (no new tool); live on RpcSs.
 
-REMAINING queue after these (each a fresh-context slice): **firewall read** (the riskiest — a net-new
-desktop/firewall.ts with IEnumVARIANT COM enumeration + a new tool + a netfw.h slot-gate block; slots verified live
-above), **TextChildPattern** (slots verified; needs an MCP-surface decision), **CUA drag-path un-flatten** (needs a
-ComputerAction `path` field), **secondary click-chain disclosure** (route clickElement's raw toggle/select through the
-now-existing disclosingPatternAct 4th-param). 7 of 11 deep-capability wins shipped; the 4 remaining are recorded with
-verified recipes.
+- **`7d932bf` feat(desktop/firewall): list_firewall_rules** — kills the netsh shell-reach; net-new desktop/firewall.ts
+  driving INetFwPolicy2→INetFwRules→IEnumVARIANT→INetFwRule via umbriel's own vcall; all IIDs + 8 slots PRIMARY-SOURCE
+  verified vs netfw.h in slot-gate; live-proven (732 rules, "out/allow any — Claude"). 84→85 tools (readonly 31→32).
+
+**8 of 11 deep-capability wins now SHIPPED.** The 3 REMAINING are genuinely lower-value follow-ons (re-assessed):
+- **TextChildPattern** — slots verified + segfault-free, BUT the job-value is MARGINAL: leaf→document grounding is what
+  the seat ranked by PREVALENCE (1193 instances), not by need — inspect_element already reads a ref's TextPattern body
+  and the document is attachable, so the incremental "read the surrounding range" value is small, and it would need a
+  new MCP surface. Below the "real JOB / no-vanity" bar. DECLINED unless a concrete need appears.
+- **CUA drag-path un-flatten** — small follow-on to dragStroke (a8b61e8): input/computer.ts fromCuaAction still keeps
+  only path first/last; needs a ComputerAction `path` field + dispatch wiring. Deferred (the MCP drag tool already
+  exposes {path}; only the Anthropic-CUA adapter shape lags).
+- **Secondary click-chain disclosure** — clickElement's raw element.toggle()/select() report "(cursor-free)" with the
+  same own-HWND steal; now disclosingPatternAct's 4th-param + SELECT_STEAL_NOTE exist, route those two through them.
+  Small honesty completion; needs a clickElement-fallback test. Recorded for a focused slice.
 
 ## READY-TO-SHIP queue (verified live by the fleet; each warrants its own careful slice — NOT yet built)
 - **Scheduled-task CREATE/DELETE (kills the schtasks shell-reach — HIGH).** desktop/tasks.ts extend + a new manage_task
