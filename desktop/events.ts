@@ -337,6 +337,7 @@ export interface ProcessInfo {
   workingSetMB: number;
   peakWorkingSetMB: number;
   handleCount: number;
+  imagePath: string; // full on-disk exe path, or '' if the detail handle was denied
   children: { processId: number; name: string }[];
 }
 
@@ -380,6 +381,7 @@ export function processInfo(processId: number): ProcessInfo | null {
   let workingSetMB = 0;
   let peakWorkingSetMB = 0;
   let handleCount = 0;
+  let imagePath = '';
   const handle = Kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, processId);
   if (handle !== 0n) {
     try {
@@ -400,11 +402,15 @@ export function processInfo(processId: number): ProcessInfo | null {
         peakWorkingSetMB = Math.round(Number(memory.readBigUInt64LE(8)) / 1_048_576);
         workingSetMB = Math.round(Number(memory.readBigUInt64LE(16)) / 1_048_576);
       }
+      const pathBuffer = Buffer.alloc(2048); // wide chars; QueryFullProcessImageNameW's size arg is in CHARACTERS, in/out
+      const pathChars = Buffer.alloc(4);
+      pathChars.writeUInt32LE(1024, 0); // 2048 bytes / 2
+      if (Kernel32.QueryFullProcessImageNameW(handle, 0, pathBuffer.ptr!, pathChars.ptr!) !== 0) imagePath = pathBuffer.toString('utf16le', 0, pathChars.readUInt32LE(0) * 2);
     } finally {
       Kernel32.CloseHandle(handle);
     }
   }
-  return { processId, name, parentProcessId, startTime, cpuKernelMs, cpuUserMs, workingSetMB, peakWorkingSetMB, handleCount, children };
+  return { processId, name, parentProcessId, startTime, cpuKernelMs, cpuUserMs, workingSetMB, peakWorkingSetMB, handleCount, imagePath, children };
 }
 
 export interface SystemResources {

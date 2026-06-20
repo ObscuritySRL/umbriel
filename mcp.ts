@@ -2125,7 +2125,7 @@ const TOOLS: McpTool[] = [
   {
     name: 'process_info',
     category: 'read',
-    description: 'Deep detail for ONE process by {pid} (no tasklist/Get-Process): name, parent pid, start time, CPU kernel/user ms, working-set + peak MB, open handle count, and the child process list — so you can pick WHICH pid to kill/suspend/reprioritize (the runaway renderer, the leaking child) instead of guessing from the flat list_processes names. Detail fields read 0 for an elevated/protected process; name/parent/children still resolve.',
+    description: 'Deep detail for ONE process by {pid} (no tasklist/Get-Process): name, parent pid, start time, CPU kernel/user ms, working-set + peak MB, open handle count, the on-disk image path (which binary it really is — disambiguates two same-named processes), and the child process list — so you can pick WHICH pid to kill/suspend/reprioritize (the runaway renderer, the leaking child) instead of guessing from the flat list_processes names. Detail fields (incl. image path) read empty/0 for an elevated/protected process; name/parent/children still resolve.',
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Process id to introspect' } }, required: ['pid'] },
   },
   {
@@ -3520,7 +3520,8 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (info === null) return errorResult(`process_info: pid ${args.pid}: no such process`);
     const detail = info.startTime !== '' ? `started ${info.startTime}, cpu ${info.cpuKernelMs + info.cpuUserMs}ms (kernel ${info.cpuKernelMs} + user ${info.cpuUserMs}), working-set ${info.workingSetMB}MB (peak ${info.peakWorkingSetMB}MB), handles ${info.handleCount}` : '(detail unavailable — elevated/protected; see current_user)';
     const children = info.children.length > 0 ? `children (${info.children.length}): ${info.children.map((child) => `${child.name}#${child.processId}`).join(', ')}` : '(no children)';
-    return textResult(`${info.name} (pid ${info.processId}, parent ${info.parentProcessId})\n${detail}\n${children}`);
+    const path = info.imagePath !== '' ? `\n${info.imagePath}` : '';
+    return textResult(`${info.name} (pid ${info.processId}, parent ${info.parentProcessId})${path}\n${detail}\n${children}`);
   },
   read_event_log: (args) => {
     const log = typeof args.log === 'string' ? args.log : 'System';
