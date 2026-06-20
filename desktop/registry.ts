@@ -77,10 +77,15 @@ export function registryList(hive: RegistryHive, key: string): { subkeys: string
   const handle = openKey(hive, key, RegKeyAccessRights.KEY_READ);
   if (handle === 0n) return null;
   try {
+    // RegEnum* lpcch/lpcbData are in/out length scalars: each is reset to its capacity (or API-overwritten, for the
+    // output-only type) before every read, so reusing one buffer per call is byte-identical to allocating fresh.
+    // registryList is synchronous (no await) → these are never reentrant, and the three are never aliased within a call.
+    const nameLength = Buffer.alloc(4);
+    const typeOut = Buffer.alloc(4);
+    const dataLength = Buffer.alloc(4);
     const subkeys: string[] = [];
     const subkeyName = Buffer.alloc(514); // 256 WCHARs + NUL — the registry key-name max is 255
     for (let index = 0; ; index += 1) {
-      const nameLength = Buffer.alloc(4);
       nameLength.writeUInt32LE(256, 0); // capacity in WCHARs (excludes the NUL it writes)
       const status = Advapi32.RegEnumKeyExW(handle, index, subkeyName.ptr!, nameLength.ptr!, null, null, null, null);
       if (status !== ERROR_SUCCESS) break; // ERROR_NO_MORE_ITEMS or any error ends the walk
@@ -90,10 +95,7 @@ export function registryList(hive: RegistryHive, key: string): { subkeys: string
     const valueName = Buffer.alloc(32_770); // 16383 WCHARs + NUL — the value-name max
     const valueData = Buffer.alloc(LIST_DATA_CAP);
     for (let index = 0; ; index += 1) {
-      const nameLength = Buffer.alloc(4);
       nameLength.writeUInt32LE(16_384, 0);
-      const typeOut = Buffer.alloc(4);
-      const dataLength = Buffer.alloc(4);
       dataLength.writeUInt32LE(LIST_DATA_CAP, 0);
       const status = Advapi32.RegEnumValueW(handle, index, valueName.ptr!, nameLength.ptr!, null, typeOut.ptr!, valueData.ptr!, dataLength.ptr!);
       if (status === ERROR_NO_MORE_ITEMS) break;
