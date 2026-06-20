@@ -20,6 +20,8 @@ const SERVICE_WIN32 = 0x0030; // OWN_PROCESS | SHARE_PROCESS
 const SERVICE_STATE_ALL = 0x0003;
 const SC_STATUS_PROCESS_INFO = 0;
 const SERVICE_CONTROL_STOP = 0x0001;
+const SERVICE_STOPPED = 0x0001; // dwCurrentState values (distinct from the SERVICE_STOP access right above)
+const SERVICE_RUNNING = 0x0004;
 const ENUM_STATUS_STRIDE = 48; // ENUM_SERVICE_STATUSW (x64): LPWSTR@0, LPWSTR@8, SERVICE_STATUS@16 (28B), 8-aligned → 48
 const SERVICE_STATES: Record<number, string> = { 1: 'stopped', 2: 'start-pending', 3: 'stop-pending', 4: 'running', 5: 'continue-pending', 6: 'pause-pending', 7: 'paused' };
 
@@ -49,6 +51,24 @@ function queryServiceState(service: bigint): string {
   const processId = buffer.readUInt32LE(28);
   const label = SERVICE_STATES[state] ?? `state-${state}`;
   return processId > 0 ? `${label} (pid ${processId})` : label;
+}
+
+/** If `service` is ALREADY in the terminal state `action` would move it to, the "already …" label (the goal is met —
+ *  NOT an error, no elevation needed); else null, so the caller performs / reports the transition unchanged. Reads the
+ *  live state via QueryServiceStatusEx (same SERVICE_STATUS_PROCESS layout queryServiceState uses). This is why a failed
+ *  Start/Control on an already-in-state service, or a medium-integrity caller without the start/stop right for a service
+ *  that is already there, reports the true situation instead of a misleading access-denied. */
+function alreadyInState(service: bigint, action: ServiceAction): string | null {
+  const buffer = Buffer.alloc(64); // SERVICE_STATUS_PROCESS is 36B; dwCurrentState @4, dwProcessId @28
+  const needed = Buffer.alloc(4);
+  if (Advapi32.QueryServiceStatusEx(service, SC_STATUS_PROCESS_INFO, buffer.ptr!, 64, needed.ptr!) === 0) return null;
+  const state = buffer.readUInt32LE(4);
+  if (action === 'start' && state === SERVICE_RUNNING) {
+    const processId = buffer.readUInt32LE(28);
+    return processId > 0 ? `already running (pid ${processId})` : 'already running';
+  }
+  if (action === 'stop' && state === SERVICE_STOPPED) return 'already stopped';
+  return null;
 }
 
 /** Enumerate every Win32 service (name / displayName / state). [] if the SCM can't be opened for enumerate (needs no
@@ -84,8 +104,10 @@ export function listServices(): ServiceEntry[] {
 
 /**
  * Query / start / stop ONE service by name. Returns the resulting state string ('running (pid 2896)', 'stopped',
- * 'start-pending', …), 'denied' (the SCM/service exists but this medium-integrity session lacks rights — start/stop
- * usually need admin), or 'not-found'. Start/stop are asynchronous, so the returned state may read *-pending.
+ * 'start-pending', …); 'already running (pid …)' / 'already stopped' when the service is ALREADY in the state the action
+ * would move it to (the goal is met — NOT an error, no elevation needed); 'denied' (the SCM/service exists but this
+ * medium-integrity session lacks the start/stop right — and the service is NOT already in the target state); or
+ * 'not-found'. Start/stop are asynchronous, so a fresh transition's state may read *-pending.
  */
 export function controlService(name: string, action: ServiceAction): string | 'denied' | 'not-found' {
   const manager = Advapi32.OpenSCManagerW(null, null, SC_MANAGER_CONNECT);
@@ -97,15 +119,18 @@ export function controlService(name: string, action: ServiceAction): string | 'd
     if (service === 0n) {
       const probe = Advapi32.OpenServiceW(manager, wide.ptr!, SERVICE_QUERY_STATUS); // disambiguate denied vs not-found
       if (probe === 0n) return 'not-found';
-      Advapi32.CloseServiceHandle(probe);
-      return 'denied'; // the service exists, but the action's access was refused
+      try {
+        return alreadyInState(probe, action) ?? 'denied'; // already in the goal state ⇒ not really denied; else the action's access was refused
+      } finally {
+        Advapi32.CloseServiceHandle(probe);
+      }
     }
     try {
       if (action === 'start') {
-        if (Advapi32.StartServiceW(service, 0, null) === 0) return 'denied';
+        if (Advapi32.StartServiceW(service, 0, null) === 0) return alreadyInState(service, action) ?? 'denied';
       } else if (action === 'stop') {
         const status = Buffer.alloc(36); // SERVICE_STATUS is 28B
-        if (Advapi32.ControlService(service, SERVICE_CONTROL_STOP, status.ptr!) === 0) return 'denied';
+        if (Advapi32.ControlService(service, SERVICE_CONTROL_STOP, status.ptr!) === 0) return alreadyInState(service, action) ?? 'denied';
       }
       return queryServiceState(service);
     } finally {

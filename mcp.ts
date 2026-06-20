@@ -2144,7 +2144,7 @@ const TOOLS: McpTool[] = [
   {
     name: 'control_service',
     category: 'os',
-    description: 'Query / start / stop a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state / denied / not-found. Gated behind the "os" category; destructive on start/stop.',
+    description: 'Query / start / stop a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state (or "already running"/"already stopped" when the service is already in the target state — the goal is met, not an error) / denied / not-found. Gated behind the "os" category; destructive on start/stop.',
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Service short name (e.g. "Spooler", not the display name)' }, action: { type: 'string', enum: ['query', 'start', 'stop'], description: 'default query' } }, required: ['name'] },
   },
   {

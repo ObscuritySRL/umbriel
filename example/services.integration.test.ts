@@ -80,6 +80,19 @@ try {
   const stop = await full.call('tools/call', { name: 'control_service', arguments: { name: 'Dnscache', action: 'stop' } });
   assert(isErr(stop) && /access-denied/.test(textOf(stop)), 'control_service stop on a protected service is a clean access-denied (medium integrity)');
 
+  // already-in-state: the goal state is already met, so report it (NOT a misleading access-denied). Both target an
+  // already-in-state service → a no-op at ANY integrity level (StartServiceW→ALREADY_RUNNING / ControlService→NOT_ACTIVE).
+  const startRunning = await full.call('tools/call', { name: 'control_service', arguments: { name: 'Dnscache', action: 'start' } });
+  assert(!isErr(startRunning) && /Dnscache: already running \(pid \d+\)/.test(textOf(startRunning)), 'control_service start on an ALREADY-RUNNING service reports "already running" (success), not a misleading access-denied');
+
+  const stoppedName = (textOf(await full.call('tools/call', { name: 'list_services', arguments: {} })).match(/^ +stopped +(\S+)/m) ?? [])[1];
+  if (stoppedName !== undefined) {
+    const stopStopped = await full.call('tools/call', { name: 'control_service', arguments: { name: stoppedName, action: 'stop' } });
+    assert(!isErr(stopStopped) && /already stopped/.test(textOf(stopStopped)), `control_service stop on an ALREADY-STOPPED service (${stoppedName}) reports "already stopped" (success), not access-denied`);
+  } else {
+    console.log('  (skip already-stopped: no stopped service present to exercise it)');
+  }
+
   const badAction = await full.call('tools/call', { name: 'control_service', arguments: { name: 'Dnscache', action: 'frobnicate' } });
   assert(isErr(badAction) && /action must be/.test(textOf(badAction)), 'control_service rejects an unknown action');
 
