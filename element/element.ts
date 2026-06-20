@@ -15,7 +15,7 @@ import { clickAt, dragTo as inputDragTo, postText, type as inputType } from '../
 import { type OcrText, ocrBitmap } from '../capture/ocr';
 import { type Bitmap, cropBitmap } from '../capture/screen';
 import { captureWindowLive } from '../capture/wgc';
-import { captureWindowRGB, listWindows, renderWidgetHandles, screenshot as windowScreenshot, windowForProcess } from './window';
+import { captureWindowRGB, listWindows, openPath, renderWidgetHandles, screenshot as windowScreenshot, windowForProcess } from './window';
 import {
   addToSelection,
   canMove,
@@ -1140,7 +1140,14 @@ export function attach(target: string | bigint | { className?: string; process?:
 
 /** Spawn a process and wait for its window to appear, then attach — no hand-rolled FindWindow loop. */
 export async function launch(command: string | readonly string[], target: { className?: string; title?: string }, timeout = 8000): Promise<Window> {
-  Bun.spawn(typeof command === 'string' ? command.split(' ') : [...command], { stdout: 'ignore', stderr: 'ignore' });
+  const argv = typeof command === 'string' ? command.split(' ') : [...command];
+  try {
+    Bun.spawn(argv, { stdout: 'ignore', stderr: 'ignore' });
+  } catch {
+    // CreateProcess can't resolve an App Execution Alias / App-Paths entry (Store apps: the new Win11 Paint, winword, wt,
+    // …); ShellExecuteW can — mirror the MCP launch_app fallback so the library launch() reaches them too.
+    if (!openPath(argv.join(' '))) throw new Error(`launch: could not spawn or shell-open ${JSON.stringify(argv.join(' '))}`);
+  }
   const start = Bun.nanoseconds();
   for (;;) {
     const hWnd = resolveWindow(target);

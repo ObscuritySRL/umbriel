@@ -126,6 +126,7 @@
     "example:jab-java-act": "bun ./example/jab-java-act.integration.test.ts",
     "example:jab-java-tree": "bun ./example/jab-java-tree.integration.test.ts",
     "example:kill-process": "bun ./example/kill-process.integration.test.ts",
+    "example:launch-store-app": "bun ./example/launch-store-app.integration.test.ts",
     "example:locate-all-images": "bun ./example/locate-all-images.integration.test.ts",
     "example:manage-process": "bun ./example/manage-process.integration.test.ts",
     "example:mcp-pattern-no-raise": "bun ./example/mcp-pattern-no-raise.integration.test.ts",
