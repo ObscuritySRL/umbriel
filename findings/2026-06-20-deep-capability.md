@@ -20,6 +20,20 @@ The "don't coast on convergence" pass. After three harden convergences, an aggre
 - **`a8b61e8` feat(input/drag): dragStroke (multi-waypoint + modifiers)** — Ctrl+drag copy, Shift+constrain, lasso/curve;
   extends the existing drag tool ({path, modifiers}); finally-guarded key release.
 
+## UPDATE — 2 more SHIPPED since the checkpoint
+- **`147c000` feat(mcp/task): manage_task create/delete** — kills the schtasks shell-reach; extends tasks.ts ITaskService
+  (NewTask@9/put_XmlText@20/RegisterTaskDefinition@17/DeleteTask@15, slot-gated vs taskschd.h); 83→84 tools; `xml` arg
+  masked; live create+delete probe (no residue).
+- **`5f5a0f9` feat(desktop/service): control_service config** — start-type/binary/account via QueryServiceConfigW
+  (reuses readPackedWide); a new control_service action (no new tool); live on RpcSs.
+
+REMAINING queue after these (each a fresh-context slice): **firewall read** (the riskiest — a net-new
+desktop/firewall.ts with IEnumVARIANT COM enumeration + a new tool + a netfw.h slot-gate block; slots verified live
+above), **TextChildPattern** (slots verified; needs an MCP-surface decision), **CUA drag-path un-flatten** (needs a
+ComputerAction `path` field), **secondary click-chain disclosure** (route clickElement's raw toggle/select through the
+now-existing disclosingPatternAct 4th-param). 7 of 11 deep-capability wins shipped; the 4 remaining are recorded with
+verified recipes.
+
 ## READY-TO-SHIP queue (verified live by the fleet; each warrants its own careful slice — NOT yet built)
 - **Scheduled-task CREATE/DELETE (kills the schtasks shell-reach — HIGH).** desktop/tasks.ts extend + a new manage_task
   tool. ITaskService COM, slots VERIFIED vs taskschd.h + full round-trip proven live (registered + deleted a probe task,
