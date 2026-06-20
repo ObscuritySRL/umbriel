@@ -24,4 +24,4 @@ AGENTS.md IS LAW: surgical diffs, NO casts ever (fix types), cast-free com.ts vc
 
 SHIP = COMMIT+PUSH every slice (Conventional Commits), fixers parallel, 1 commit/win. NO version-bump/publish/server.json/MCP-registry — owner releases. findings/ current (CLEAN lane = CONSTRAINT, record so next run skips).
 
-ANCHOR (RE-VERIFY): 83 gated tools (readonly|safe|full), HEAD 084b7df, tsc 0, 48 tests green. No successor prompt. FIRST ACTION: spawn ALL finders NOW.
+ANCHOR (RE-VERIFY): 83 gated tools (readonly|safe|full), tsc 0, 48 unit tests green (re-verify HEAD via `git rev-parse --short HEAD`). No successor prompt. FIRST ACTION: spawn ALL finders NOW.
