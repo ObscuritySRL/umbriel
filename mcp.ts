@@ -265,8 +265,8 @@ const cursorDenied = (Bun.env.UMBRIEL_CURSOR ?? '').toLowerCase() === 'never';
 // Forensic audit trail (default-ON, only widen-able): every MUTATING-category tools/call (read tools too under
 // `verbose`) emits one structured JSON line {ts,tool,category,args(masked),ok,error} to STDERR (stdout is reserved
 // for JSON-RPC). It cannot be SILENTLY disabled — UMBRIEL_AUDIT=off is the deployer's EXPLICIT opt-out, reported at
-// startup. Secret-bearing args (type/paste/set_value/set_clipboard/write_file/java_set_text text|value|content) are
-// masked to a length by maskArgs, never logged verbatim.
+// startup. Secret-bearing args (type/paste/set_value/set_clipboard/write_file/java_set_text/registry_set text|value|
+// content|data) are masked to a length by maskArgs, never logged verbatim.
 const auditMode: 'off' | 'on' | 'verbose' = (() => {
   const raw = (Bun.env.UMBRIEL_AUDIT ?? '').toLowerCase();
   if (raw === 'off') return 'off';
@@ -768,7 +768,7 @@ function errorResult(text: string): object {
 
 // Args whose value is free text the model wrote — masked in the trace to its length, so a recorded journal never
 // leaks pasted secrets / typed credentials while still telling you HOW MUCH text the step carried.
-const TRACE_MASK_KEYS = new Set(['content', 'text', 'value']);
+const TRACE_MASK_KEYS = new Set(['content', 'text', 'value', 'data']);
 // Args whose value is a whole command LINE the model wrote (run_program/launch_app `command`) — the inline home of
 // credentials (`mysql --password=…`, `curl -H 'Authorization: Bearer …'`). Unlike an args[] array (collapsed to a count)
 // the string carries the secret verbatim, so it must be masked to its leading executable token + a remainder length.
