@@ -37,6 +37,7 @@ const IID_IDirect3DDevice = 'A37624AB-8D5F-4650-9D3E-9EAE3D9BC670';
 const IID_IDirect3D11CaptureFramePoolStatics2 = '589b103f-6bbc-5df5-a991-02e28b3b66d5';
 const IID_IDirect3DDxgiInterfaceAccess = 'A9B3D012-3DF2-4EE3-B8D1-8695F457D3C1';
 const IID_ID3D11Texture2D = '6f15aaf2-d208-4e89-9ab4-489535d34f9c';
+const IID_IClosable = '30D5A829-7FA4-4026-83BB-D75BAE4EA99E'; // Windows.Foundation.IClosable — Close() frees a WinRT object's backing native handles; Release alone leaks them
 
 // vtable slots (0-based). IUnknown 0-2 on every interface; the rest header declaration order.
 const QUERY_INTERFACE = 0;
@@ -54,6 +55,7 @@ const DEV_CREATE_TEXTURE_2D = 5;
 const CTX_COPY_RESOURCE = 47;
 const CTX_MAP = 14;
 const CTX_UNMAP = 15;
+const CLOSABLE_CLOSE = 6; // IClosable::Close — IInspectable 0-5, then Close (header-confirmed windows.foundation.h CIClosableVtbl)
 
 // CreateDirect3D11DeviceFromDXGIDevice takes the IDXGIDevice* as a pointer-sized arg; the @bun-win32/d3d11
 // binding types it as `ptr`, which will not accept a bigint COM pointer — bind it locally with a u64 arg.
@@ -78,6 +80,20 @@ function vcall(thisPtr: bigint, slot: number, argTypes: readonly FFIType[], args
 
 function release(ptr: bigint): void {
   if (ptr !== 0n) vcall(ptr, RELEASE, [], [], FFIType.u32);
+}
+
+/** Close a WinRT object's IClosable (freeing its backing USER/GDI/kernel handles — a bare Release LEAKS them, and a
+ *  long-lived capture loop would exhaust the per-process 10k USER-object quota and crash the server) THEN release the
+ *  interface. A non-IClosable interface (QueryInterface → E_NOINTERFACE) is simply released. Synchronous — the GUID +
+ *  out buffers are read inline at the QI call site, no await between. */
+function closeAndRelease(ptr: bigint): void {
+  if (ptr === 0n) return;
+  const closable = queryInterface(ptr, IID_IClosable); // E_NOINTERFACE → 0n → a non-IClosable interface is simply released
+  if (closable !== 0n) {
+    vcall(closable, CLOSABLE_CLOSE, [], []);
+    release(closable);
+  }
+  release(ptr);
 }
 
 function guidBytes(value: string): Buffer {
@@ -294,10 +310,12 @@ export async function captureWindowLive(hWnd: bigint, options: { timeoutMs?: num
     release(staging);
     release(texture);
     release(access);
-    release(surface);
-    release(frame);
-    release(session);
-    release(pool);
-    release(item);
+    // The WinRT capture objects (surface/frame/session/pool/item) are IClosable — Close() frees their backing native
+    // handles that a bare Release leaks (measured: +1 USER object + ~14 handles PER capture without this).
+    closeAndRelease(surface);
+    closeAndRelease(frame);
+    closeAndRelease(session);
+    closeAndRelease(pool);
+    closeAndRelease(item);
   }
 }
