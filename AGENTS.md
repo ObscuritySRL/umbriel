@@ -2,7 +2,7 @@
 
 Rules for working in **umbriel** — Playwright for the Windows desktop, from [Bun](https://bun.sh). A single, zero-native-dependency package that drives and tests native Windows GUIs through the UI Automation accessibility tree (find by name, invoke, type, assert), plus synthetic input, full-screen capture + image matching, native-window introspection (Spy++-style), an LLM computer-use adapter, OCR, and a stdio **MCP server**. No node-gyp, no prebuilt binaries, no sidecar process. Follow these rules exactly.
 
-umbriel is pure TypeScript over [`bun:ffi`](https://bun.sh/docs/api/ffi). It does not bind any DLL itself — it consumes the published `@bun-win32/*` FFI binding packages (`core`, `user32`, `oleacc`, `combase`, `kernel32`, `gdi32`, `shell32`, `shcore`, `oleaut32`, `advapi32`, `dwmapi`, `d3d11`) as ordinary pinned npm dependencies, and composes them into a high-level desktop-automation API.
+umbriel is pure TypeScript over [`bun:ffi`](https://bun.sh/docs/api/ffi). It does not bind any DLL itself — it consumes the published `@bun-win32/*` FFI binding packages (`core`, `user32`, `oleacc`, `combase`, `kernel32`, `gdi32`, `shell32`, `shcore`, `oleaut32`, `advapi32`, `dwmapi`, `d3d11`) as ordinary pinned npm dependencies, and composes them into a high-level desktop-automation API. (One exception: a Win32 symbol/DLL that **no installed `@bun-win32/*` binding covers** may be hand-rolled here as a last resort — see the FFI Binding Rules — but every such case is logged in [`TODO.md`](TODO.md) for the owner to upstream into bun-win32.)
 
 > umbriel was extracted from the `bun-win32` monorepo (formerly `@bun-win32/uia` + `bun-uia`) into its own standalone repo and unscoped npm package. The FFI layer it stands on still lives in `@bun-win32/*`; only the product is standalone.
 
@@ -87,7 +87,7 @@ bun run mcp.ts                       # start the stdio MCP server locally
 
 ## FFI Binding Rules (inherited, non-negotiable)
 
-umbriel does not declare new FFI symbols, but it calls into the `@bun-win32/*` bindings and decodes their buffers. The conventions still apply to every line that touches a pointer or handle:
+umbriel does not declare new FFI symbols **when an installed `@bun-win32/*` binding already exposes them** — it calls into the bindings and decodes their buffers. **Exception (last resort, gap-only):** if a symbol/DLL umbriel needs is genuinely *not* covered by ANY installed `@bun-win32/*` binding, it MAY be hand-rolled here (under the same conventions below) so the work isn't blocked — but you MUST: (1) **confirm the gap is real** — grep the installed bindings under `node_modules/@bun-win32/*` and verify the symbol/DLL truly isn't there (not just a wrong import or a mis-typed-but-present symbol); (2) **log it in [`TODO.md`](TODO.md)** — the DLL + symbol, why it's needed, and the `file:line` of the local declaration — so the owner wraps it into bun-win32 and the local hand-roll is later removed. NEVER hand-roll silently, NEVER hand-roll a symbol a binding already provides, and prefer a Bun-native path or working around the gap (per the BENCHMARK rule) over a hand-roll when one exists. The conventions still apply to every line that touches a pointer or handle:
 
 - **`u64` (TS `bigint`)** for all handles (`HWND`, `HANDLE`, COM interface pointers, …), pointer-sized integers, and remote/opaque addresses. **NULL is `0n`**; check `=== 0n`.
 - **`ptr` (TS `Pointer`)** for local buffers the caller allocates (`Buffer`/`TypedArray.ptr`), strings, by-ref structs, and callbacks. **NULL is `null`**.
