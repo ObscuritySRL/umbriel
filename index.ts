@@ -103,7 +103,7 @@ export { type DiffNode, diffTrees, refsRenumbered, type RenameChange, renderDiff
 export { attach, Element, focused, fromHandle, fromPoint, launch, root, type StateExpectation, Window } from './element/element';
 export { killProcess, listProcesses, type PriorityClass, type ProcessInfo, processInfo, setProcessPriority, suspendProcess, systemResources, type SystemResources, waitForProcess, waitForProcessGone, waitForWindow, waitForWindowGone, watchWindows, type WindowEvent, type WindowEventType, type WindowMatch, type WindowWatcher } from './desktop/events';
 export { parseHive, registryDeleteValue, registryGet, registryList, registrySet, registrySetString, type RegistryData, type RegistryHive, type RegistryValue, type RegistryWriteType } from './desktop/registry';
-export { controlService, listServices, type ServiceAction, type ServiceEntry } from './desktop/services';
+export { controlService, listServices, readServiceConfig, type ServiceAction, type ServiceConfig, type ServiceEntry } from './desktop/services';
 export { type EnvScope, getEnv, listEnv, parseScope, setEnv } from './desktop/env';
 export { type EventLogLevel, type EventLogRecord, readEventLog } from './desktop/eventlog';
 export { type DisplayInfo, getDisplays } from './desktop/display';

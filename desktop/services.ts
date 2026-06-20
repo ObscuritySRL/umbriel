@@ -140,3 +140,44 @@ export function controlService(name: string, action: ServiceAction): string | 'd
     Advapi32.CloseServiceHandle(manager);
   }
 }
+
+const SERVICE_QUERY_CONFIG = 0x0001;
+const SERVICE_START_TYPES: Record<number, string> = { 0: 'boot', 1: 'system', 2: 'auto', 3: 'manual', 4: 'disabled' };
+
+export interface ServiceConfig {
+  startType: string; // boot / system / auto / manual / disabled
+  binaryPath: string; // the on-disk image path + command line the service runs (e.g. svchost.exe -k netsvcs)
+  account: string; // the account it runs as (LocalSystem / NetworkService / a user)
+}
+
+/** A service's static config — how it starts, the binary/command line it runs, and the account — via QueryServiceConfigW
+ *  (two-call sizing, then the LPWSTR fields packed in the buffer decoded by offset). null if the service can't be opened
+ *  for a config query (not found / denied). Read-only; needs no elevation in practice. */
+export function readServiceConfig(name: string): ServiceConfig | null {
+  const manager = Advapi32.OpenSCManagerW(null, null, SC_MANAGER_CONNECT);
+  if (manager === 0n) return null;
+  try {
+    const wide = Buffer.from(`${name}\0`, 'utf16le');
+    const service = Advapi32.OpenServiceW(manager, wide.ptr!, SERVICE_QUERY_CONFIG);
+    if (service === 0n) return null;
+    try {
+      const needed = Buffer.alloc(4);
+      Advapi32.QueryServiceConfigW(service, null, 0, needed.ptr!); // sizing call — returns 0 (ERROR_INSUFFICIENT_BUFFER) + the byte count
+      const size = needed.readUInt32LE(0);
+      if (size === 0) return null;
+      const buffer = Buffer.alloc(size);
+      if (Advapi32.QueryServiceConfigW(service, buffer.ptr!, size, needed.ptr!) === 0) return null;
+      const base = BigInt(buffer.ptr!); // read inline right after the synchronous fill — backing store stable, no await
+      const startType = buffer.readUInt32LE(4); // QUERY_SERVICE_CONFIGW (x64): dwStartType@4, lpBinaryPathName@16, lpServiceStartName@48
+      return {
+        startType: SERVICE_START_TYPES[startType] ?? `start-${startType}`,
+        binaryPath: readPackedWide(buffer, base, buffer.readBigUInt64LE(16)),
+        account: readPackedWide(buffer, base, buffer.readBigUInt64LE(48)),
+      };
+    } finally {
+      Advapi32.CloseServiceHandle(service);
+    }
+  } finally {
+    Advapi32.CloseServiceHandle(manager);
+  }
+}

@@ -24,6 +24,7 @@ import {
   cloakReason,
   closeWindow,
   controlService,
+  readServiceConfig,
   createTask,
   deleteTask,
   listScheduledTasks,
@@ -2176,8 +2177,8 @@ const TOOLS: McpTool[] = [
   {
     name: 'control_service',
     category: 'os',
-    description: 'Query / start / stop a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state (or "already running"/"already stopped" when the service is already in the target state — the goal is met, not an error) / denied / not-found. Gated behind the "os" category; destructive on start/stop.',
-    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Service short name (e.g. "Spooler", not the display name)' }, action: { type: 'string', enum: ['query', 'start', 'stop'], description: 'default query' } }, required: ['name'] },
+    description: 'Query / start / stop / read-config a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "config" returns how it starts (boot/system/auto/manual/disabled), the on-disk binary/command line it runs, and the account it runs as; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state (or "already running"/"already stopped" when the service is already in the target state — the goal is met, not an error) / denied / not-found. Gated behind the "os" category; destructive on start/stop.',
+    inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Service short name (e.g. "Spooler", not the display name)' }, action: { type: 'string', enum: ['query', 'start', 'stop', 'config'], description: 'default query' } }, required: ['name'] },
   },
   {
     name: 'get_env',
@@ -3592,7 +3593,11 @@ const HANDLERS: Record<string, ToolHandler> = {
   control_service: (args) => {
     const name = requireString(args, 'name');
     const action = typeof args.action === 'string' ? args.action : 'query';
-    if (action !== 'query' && action !== 'start' && action !== 'stop') return errorResult('control_service: action must be query | start | stop');
+    if (action !== 'query' && action !== 'start' && action !== 'stop' && action !== 'config') return errorResult('control_service: action must be query | start | stop | config');
+    if (action === 'config') {
+      const config = readServiceConfig(name);
+      return config === null ? errorResult(`control_service: cannot read config for "${name}" — no such service or access-denied`) : textResult(`${name}: start=${config.startType}, account=${config.account}\n${config.binaryPath}`);
+    }
     const result = controlService(name, action);
     if (result === 'denied') return errorResult(`control_service: "${name}" access-denied — start/stop usually need elevation (see current_user)`);
     if (result === 'not-found') return errorResult(`control_service: no service named "${name}"`);
