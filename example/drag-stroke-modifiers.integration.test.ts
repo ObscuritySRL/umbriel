@@ -57,6 +57,16 @@ try {
     threw = true;
   }
   assert(threw, 'dragStroke([single point]) throws — a stroke needs ≥2 waypoints');
+
+  // An invalid modifier name must throw BEFORE any key is pressed — no half-pressed modifier escapes the finally release.
+  let badThrew = false;
+  try {
+    dragStroke([{ x: 300, y: 300 }, { x: 350, y: 350 }], ['Control', 'NotARealKey']);
+  } catch {
+    badThrew = true;
+  }
+  assert(badThrew, 'dragStroke with an invalid modifier name throws');
+  assert(!ctrlDown(), 'and leaves NO modifier stuck — names are validated before any keyDown (Control was never pressed)');
 } finally {
   if (ctrlDown()) keyUp('Control'); // safety: never leave Control stuck
   const pid = windowProcessId(notepad.hWnd);
