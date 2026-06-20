@@ -172,6 +172,8 @@ describe('WGC + MSAA + D3D11 SLOT coverage (wgc.ts / msaa.ts)', () => {
     ['winrt', 'windows.graphics.capture.h', 'CIDirect3D11CaptureFramePool', 'Recreate', 6], // the trap: slot 6 on the INSTANCE is Recreate, not CreateFreeThreaded (which is on Statics2)
     ['winrt', 'windows.graphics.capture.h', 'CIGraphicsCaptureSession', 'StartCapture', 6],
     ['winrt', 'windows.graphics.capture.h', 'CIDirect3D11CaptureFrame', 'get_Surface', 6],
+    ['winrt', 'windows.foundation.h', 'CIClosable', 'Close', 6], // wgc.ts closeAndRelease — frees the WinRT capture objects' handles a bare Release leaks
+
     ['um', 'd3d11.h', 'ID3D11Texture2D', 'GetDesc', 10],
     ['um', 'd3d11.h', 'ID3D11Device', 'CreateTexture2D', 5],
     ['um', 'd3d11.h', 'ID3D11DeviceContext', 'CopyResource', 47],
