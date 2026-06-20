@@ -14,7 +14,7 @@ import Combase from '@bun-win32/combase';
 import Oleaut32 from '@bun-win32/oleaut32';
 
 import { comRelease, guid, vcall } from '../com/com';
-import { decodeBstr } from '../com/reads';
+import { getBstr, getLong } from '../com/reads';
 import { CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, S_OK, VT_I4 } from '../com/constants';
 
 const CLSID_TaskScheduler = '{0f87369f-a4e5-4cfc-bd3e-73e6154572dd}';
@@ -62,18 +62,6 @@ function oleDate(date: number): string {
   return date < 36526 ? '' : new Date((date - 25569) * 86_400_000).toISOString();
 }
 
-function getBstrField(task: bigint, slot: number): string {
-  const out = Buffer.alloc(8);
-  if (vcall(task, slot, [FFIType.ptr], [out.ptr!]) !== S_OK) return '';
-  return decodeBstr(out.readBigUInt64LE(0)); // copies, then frees the BSTR
-}
-
-function getLongField(task: bigint, slot: number): number {
-  const out = Buffer.alloc(4);
-  if (vcall(task, slot, [FFIType.ptr], [out.ptr!]) !== S_OK) return 0;
-  return out.readInt32LE(0);
-}
-
 function getDateField(task: bigint, slot: number): string {
   const out = Buffer.alloc(8);
   if (vcall(task, slot, [FFIType.ptr], [out.ptr!]) !== S_OK) return '';
@@ -103,12 +91,12 @@ function collectTasks(folder: bigint, folderPath: string, tasks: ScheduledTask[]
       const task = taskOut.readBigUInt64LE(0);
       tasks.push({
         path: folderPath,
-        name: getBstrField(task, TASK_SLOT.IRegisteredTask_get_Name),
-        state: TASK_STATES[getLongField(task, TASK_SLOT.IRegisteredTask_get_State)] ?? 'unknown',
-        enabled: getLongField(task, TASK_SLOT.IRegisteredTask_get_Enabled) !== 0, // VARIANT_BOOL: -1 true / 0 false
+        name: getBstr(task, TASK_SLOT.IRegisteredTask_get_Name),
+        state: TASK_STATES[getLong(task, TASK_SLOT.IRegisteredTask_get_State)] ?? 'unknown',
+        enabled: getLong(task, TASK_SLOT.IRegisteredTask_get_Enabled) !== 0, // VARIANT_BOOL: -1 true / 0 false
         lastRun: getDateField(task, TASK_SLOT.IRegisteredTask_get_LastRunTime),
         nextRun: getDateField(task, TASK_SLOT.IRegisteredTask_get_NextRunTime),
-        lastResult: `0x${(getLongField(task, TASK_SLOT.IRegisteredTask_get_LastTaskResult) >>> 0).toString(16)}`,
+        lastResult: `0x${(getLong(task, TASK_SLOT.IRegisteredTask_get_LastTaskResult) >>> 0).toString(16)}`,
       });
       comRelease(task);
     }
@@ -140,7 +128,7 @@ function walkFolder(service: bigint, folderPath: string, depth: number, tasks: S
             const subOut = Buffer.alloc(8);
             if (vcall(subfolders, TASK_SLOT.Collection_get_Item, [FFIType.ptr, FFIType.ptr], [variant.ptr!, subOut.ptr!]) !== S_OK) continue;
             const subfolder = subOut.readBigUInt64LE(0);
-            const subPath = getBstrField(subfolder, TASK_SLOT.ITaskFolder_get_Path);
+            const subPath = getBstr(subfolder, TASK_SLOT.ITaskFolder_get_Path);
             comRelease(subfolder);
             if (subPath !== '') walkFolder(service, subPath, depth + 1, tasks);
           }
