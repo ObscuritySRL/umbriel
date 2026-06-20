@@ -116,6 +116,7 @@ export {
   cursorPosition,
   cutFromControl,
   doubleClickAt,
+  dragStroke,
   dragTo,
   holdKey,
   INPUT_SIZE,
