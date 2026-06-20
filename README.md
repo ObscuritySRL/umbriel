@@ -4,7 +4,7 @@
 
 # Umbriel · A set of hands for your AI agent — and Playwright for the Windows desktop
 
-Drive any Windows app through four layers: fall back to OCR and pixel-matching when there's no other way in, see and manage windows even when they're hidden, send cursor-free synthetic input, and target controls by name and role. Built by Claude, for Claude — but any AI agent over MCP can use it.
+Drive any Windows app through five layers — fall back to OCR and pixel-matching when there's no other way in, see and manage windows even when they're hidden, send cursor-free synthetic input, target controls by name and role, and reach past the GUI to drive the OS itself: processes, services, the registry, scheduled tasks, environment, and the event log. Built by Claude, for Claude — but any AI agent over MCP can use it.
 
 [![npm](https://img.shields.io/npm/v/umbriel?color=8b5cf6&label=umbriel)](https://www.npmjs.com/package/umbriel)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -22,6 +22,7 @@ Umbriel drives the Windows desktop the way a person would — through whatever c
 2. **Semantic control** — read the UI Automation tree an app exposes and target controls by *name* and *role*, not coordinates. Survives the DPI, layout, and theme changes that shatter pixel scripts.
 3. **Sight & window control** — capture the *live* pixels of any window (even fully GPU-composited or occluded), inspect raw HWND hierarchies, and move, raise, or size windows.
 4. **Synthetic input** — cursor-free clicks, keystrokes, and text that land on background, locked, minimized, or occluded windows without stealing focus.
+5. **Drive the OS, not just GUIs** — when the task *is* the machine, act on it directly: read and write the registry, list / kill / suspend / reprioritize processes, query / start / stop services, enumerate scheduled tasks, get and set environment variables, read the event log, and inspect display config — all native, no PowerShell or shelling out.
 
 Underneath it's a few kilobytes of TypeScript on Bun's built-in FFI — no Appium server, no `.NET`, no `node-gyp`, no prebuilt binaries.
 
@@ -123,6 +124,7 @@ Because Umbriel is plain TypeScript over Bun's own FFI, it:
 | | Capability | What it does |
 | :-: | --- | --- |
 | 🌐 | **Chromium & Electron** | Drive the in-page DOM of Chrome, Edge, and Electron apps (Discord, Slack, Spotify, VS Code) as real elements — same API as native controls. |
+| 🛠️ | **Drive the OS, not just GUIs** | Registry (read + typed write), processes (info / kill / suspend / reprioritize), services, scheduled tasks, env vars, event log, displays — all native, no PowerShell. |
 | 📋 | **Clipboard** | Large-text paste with no per-keystroke corruption, plus copy-and-read from any app. |
 | 🌑 | **Drive in the dark** | `invoke` / `scroll` / `setValue` / `toggle` move no cursor — they work on hidden, minimized, occluded, or locked windows. |
 | 🖼️ | **Pixel & OCR fallback** | Coordinate clicks, full-screen capture, template matching, and text recognition for canvases and games. |

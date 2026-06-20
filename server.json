@@ -6,12 +6,12 @@
     "url": "https://github.com/ObscuritySRL/umbriel",
     "source": "github"
   },
-  "version": "1.10.0",
+  "version": "1.10.1",
   "packages": [
     {
       "registryType": "npm",
       "identifier": "umbriel",
-      "version": "1.10.0",
+      "version": "1.10.1",
       "runtimeHint": "bunx",
       "transport": {
         "type": "stdio"
@@ -27,7 +27,7 @@
         },
         {
           "name": "UMBRIEL_OS",
-          "description": "Set to '1' to allow OS-level tools (launch_app, run_program, open_path) AND filesystem tools (read_file, write_file, list_dir) regardless of profile.",
+          "description": "Set to '1' to allow the 'os' tools (launch_app/run_program/open_path, kill_process, manage_process, control_service, set_env, registry_get/registry_list/registry_set) AND the 'fs' tools (read_file/write_file/list_dir/stat_path/make_dir/copy_file/move_file/delete_file) regardless of profile.",
           "isRequired": false,
           "isSecret": false,
           "format": "string"
@@ -55,7 +55,28 @@
         },
         {
           "name": "UMBRIEL_FS_ROOT",
-          "description": "Sandbox root directory that read_file/write_file/list_dir are confined to when fs tools are enabled.",
+          "description": "Sandbox root directory that the fs-category file tools (read_file/write_file/list_dir/stat_path/make_dir/copy_file/move_file/delete_file) are confined to when fs tools are enabled; open_path's path argument is honored too.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "UMBRIEL_TRACE",
+          "description": "File path to journal every mutating tool call as JSON Lines (tool, category, masked args, ok, observation); secret-bearing args and values are redacted. Unset = no trace.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "UMBRIEL_AUDIT",
+          "description": "Controls the default-on stderr audit of mutating tool calls. 'off' is the explicit opt-out (reported at startup); 'verbose' also audits reads.",
+          "isRequired": false,
+          "isSecret": false,
+          "format": "string"
+        },
+        {
+          "name": "UMBRIEL_REDACT",
+          "description": "Credential masking (default on). 'off' opts out; a regex value overrides the built-in secret shapes masked in clipboard/env/registry reads and the trace journal.",
           "isRequired": false,
           "isSecret": false,
           "format": "string"
