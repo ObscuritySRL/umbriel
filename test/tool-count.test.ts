@@ -12,9 +12,9 @@ const osFs = categories.filter((category) => category === 'os' || category === '
 const safe = total - osFs;
 
 test('tool counts are derived correctly from mcp.ts', () => {
-  expect(total).toBe(84);
-  expect(safe).toBe(65);
-  expect(readonly).toBe(31); // read_clipboard lives in 'input' (least-privilege), so only the 'read' category is readonly
+  expect(total).toBe(85);
+  expect(safe).toBe(66);
+  expect(readonly).toBe(32); // read_clipboard lives in 'input' (least-privilege), so only the 'read' category is readonly
   expect(osFs).toBe(19);
 });
 

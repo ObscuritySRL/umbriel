@@ -108,6 +108,7 @@ export { type EnvScope, getEnv, listEnv, parseScope, setEnv } from './desktop/en
 export { type EventLogLevel, type EventLogRecord, readEventLog } from './desktop/eventlog';
 export { type DisplayInfo, getDisplays } from './desktop/display';
 export { createTask, deleteTask, listScheduledTasks, type ScheduledTask, TASK_SLOT } from './desktop/tasks';
+export { FIREWALL_SLOT, type FirewallRule, listFirewallRules } from './desktop/firewall';
 export { type IdleOptions, waitForIdle } from './desktop/idle';
 export { isJavaWindow, javaInvoke, type JavaNode, javaSetText, type JavaTarget, javaTree, renderJavaTree } from './element/jab';
 export {

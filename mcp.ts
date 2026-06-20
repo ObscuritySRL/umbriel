@@ -27,6 +27,7 @@ import {
   readServiceConfig,
   createTask,
   deleteTask,
+  listFirewallRules,
   listScheduledTasks,
   listServices,
   getDisplays,
@@ -2159,6 +2160,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Only tasks whose folder path starts with this prefix (e.g. "\\\\Microsoft")' }, enabledOnly: { type: 'boolean', description: 'Only enabled tasks' } } },
   },
   {
+    name: 'list_firewall_rules',
+    category: 'read',
+    description: 'List Windows Defender Firewall rules natively (no netsh advfirewall firewall show rule) — what inbound/outbound traffic is allowed or blocked: each rule\'s name, direction (in/out), action (allow/block), enabled state, protocol (tcp/udp/…), and local ports. A real security/diagnostic read. Optional {direction} (in|out), {enabledOnly}, and {match} (case-insensitive substring of the rule name) filters; {limit} caps the output (default 60, newest-first by enumeration order).',
+    inputSchema: { type: 'object', properties: { direction: { type: 'string', enum: ['in', 'out'], description: 'Only inbound or only outbound rules' }, enabledOnly: { type: 'boolean', description: 'Only enabled rules' }, match: { type: 'string', description: 'Only rules whose name contains this (case-insensitive)' }, limit: { type: 'number', description: 'Max rules to return (default 60)' } } },
+  },
+  {
     name: 'manage_task',
     category: 'os',
     description:
@@ -3580,6 +3587,20 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (args.enabledOnly === true) tasks = tasks.filter((task) => task.enabled);
     if (tasks.length === 0) return errorResult(`list_scheduled_tasks: no tasks${folderFilter !== '' ? ` under "${args.folder}"` : ''} (or the Task Scheduler service is unreachable)`);
     return textResult(`${tasks.length} scheduled tasks:\n${tasks.map((task) => `${task.enabled ? '' : '[disabled] '}${task.path}\\${task.name} — ${task.state}, last ${task.lastRun || 'never'} (${task.lastResult}), next ${task.nextRun || '—'}`).join('\n')}`);
+  },
+  list_firewall_rules: (args) => {
+    let rules = listFirewallRules();
+    if (rules.length === 0) return errorResult('list_firewall_rules: could not enumerate firewall rules (the Windows Firewall COM service is unreachable)');
+    if (args.direction === 'in' || args.direction === 'out') rules = rules.filter((rule) => rule.direction === args.direction);
+    if (args.enabledOnly === true) rules = rules.filter((rule) => rule.enabled);
+    if (typeof args.match === 'string') {
+      const needle = args.match.toLowerCase();
+      rules = rules.filter((rule) => rule.name.toLowerCase().includes(needle));
+    }
+    const total = rules.length;
+    const shown = rules.slice(0, typeof args.limit === 'number' && args.limit > 0 ? args.limit : 60);
+    const lines = shown.map((rule) => `${rule.enabled ? '' : '[off] '}${rule.direction}/${rule.action} ${rule.protocol}${rule.localPorts ? ` :${rule.localPorts}` : ''} — ${rule.name}`);
+    return textResult(`${total} firewall rules${total > shown.length ? ` (showing ${shown.length})` : ''}:\n${lines.join('\n')}`);
   },
   manage_task: (args) => {
     const action = args.action;

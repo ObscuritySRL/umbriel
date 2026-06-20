@@ -10,7 +10,7 @@ import { describe, expect, test } from 'bun:test';
 import { FFIType } from 'bun:ffi';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 
-import { automation, compileCondition, root, TASK_SLOT, trueCondition, uninitialize, Window } from '../index';
+import { automation, compileCondition, FIREWALL_SLOT, root, TASK_SLOT, trueCondition, uninitialize, Window } from '../index';
 import { comRelease, invokerCacheSize, vcall } from '../com/com';
 import { SLOT } from '../com/constants';
 
@@ -571,5 +571,25 @@ describe('Task Scheduler SLOT table ↔ taskschd.h (tasks.ts)', () => {
     expect(registeredTask?.get('get_LastRunTime')).toBe(TASK_SLOT.IRegisteredTask_get_LastRunTime);
     expect(registeredTask?.get('get_LastTaskResult')).toBe(TASK_SLOT.IRegisteredTask_get_LastTaskResult);
     expect(registeredTask?.get('get_NextRunTime')).toBe(TASK_SLOT.IRegisteredTask_get_NextRunTime);
+  });
+});
+
+// desktop/firewall.ts walks INetFwPolicy2 → INetFwRules → (IEnumVARIANT) → INetFwRule via FIREWALL_SLOT — a wrong slot
+// SEGFAULTS. netfw.h's MIDL `*Vtbl` structs are the authoritative order; gate every used FIREWALL_SLOT against them.
+describe('Windows Firewall SLOT table ↔ netfw.h (firewall.ts)', () => {
+  const header = sdkHeader('um', 'netfw.h');
+  test.skipIf(header === null)('every FIREWALL_SLOT matches the netfw.h vtbl declaration order', () => {
+    const scoped = parseScopedVtableSlots(readFileSync(header!, 'utf8'));
+    const policy = findInterface(scoped, 'INetFwPolicy2');
+    const fwRules = findInterface(scoped, 'INetFwRules');
+    const rule = findInterface(scoped, 'INetFwRule');
+    expect(policy?.get('get_Rules')).toBe(FIREWALL_SLOT.INetFwPolicy2_get_Rules);
+    expect(fwRules?.get('get__NewEnum')).toBe(FIREWALL_SLOT.INetFwRules_get__NewEnum);
+    expect(rule?.get('get_Name')).toBe(FIREWALL_SLOT.INetFwRule_get_Name);
+    expect(rule?.get('get_Protocol')).toBe(FIREWALL_SLOT.INetFwRule_get_Protocol);
+    expect(rule?.get('get_LocalPorts')).toBe(FIREWALL_SLOT.INetFwRule_get_LocalPorts);
+    expect(rule?.get('get_Direction')).toBe(FIREWALL_SLOT.INetFwRule_get_Direction);
+    expect(rule?.get('get_Enabled')).toBe(FIREWALL_SLOT.INetFwRule_get_Enabled);
+    expect(rule?.get('get_Action')).toBe(FIREWALL_SLOT.INetFwRule_get_Action);
   });
 });

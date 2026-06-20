@@ -114,6 +114,7 @@
     "example:filter-not": "bun ./example/filter-not.integration.test.ts",
     "example:find-cached": "bun ./example/find-cached.integration.test.ts",
     "example:find-text": "bun ./example/find-text.integration.test.ts",
+    "example:firewall-rules-read": "bun ./example/firewall-rules-read.integration.test.ts",
     "example:get-displays": "bun ./example/get-displays.integration.test.ts",
     "example:get-variant": "bun ./example/get-variant.integration.test.ts",
     "example:grid-cell": "bun ./example/grid-cell.integration.test.ts",
