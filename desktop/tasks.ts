@@ -20,6 +20,8 @@ import { CLSCTX_INPROC_SERVER, COINIT_APARTMENTTHREADED, S_OK, VT_I4 } from '../
 const CLSID_TaskScheduler = '{0f87369f-a4e5-4cfc-bd3e-73e6154572dd}';
 const IID_ITaskService = '{2faba4c7-4da9-4013-9697-20cc3fd40f85}';
 const TASK_ENUM_HIDDEN = 0x0001;
+const TASK_CREATE_OR_UPDATE = 6; // RegisterTaskDefinition flags
+const TASK_LOGON_INTERACTIVE_TOKEN = 3; // run as the current interactive user, no stored password
 const MAX_TASKS = 1000;
 const MAX_DEPTH = 12;
 const TASK_STATES: Record<number, string> = { 0: 'unknown', 1: 'disabled', 2: 'queued', 3: 'ready', 4: 'running' };
@@ -27,10 +29,14 @@ const TASK_STATES: Record<number, string> = { 0: 'unknown', 1: 'disabled', 2: 'q
 /** Verified-LIVE vtable slots. IDispatch-derived: IUnknown 0-2, IDispatch 3-6, interface methods from 7. */
 export const TASK_SLOT = {
   ITaskService_GetFolder: 7,
+  ITaskService_NewTask: 9, // → ITaskDefinition (GetFolder@7, GetRunningTasks@8, NewTask@9, Connect@10)
   ITaskService_Connect: 10,
+  ITaskDefinition_put_XmlText: 20, // get+put property: get_XmlText@19, put_XmlText@20
   ITaskFolder_get_Path: 8,
   ITaskFolder_GetFolders: 10,
+  ITaskFolder_DeleteTask: 15,
   ITaskFolder_GetTasks: 14,
+  ITaskFolder_RegisterTaskDefinition: 17, // ...DeleteTask@15, RegisterTask@16, RegisterTaskDefinition@17
   Collection_get_Count: 7, // ITaskFolderCollection + IRegisteredTaskCollection share Count@7 / Item@8
   Collection_get_Item: 8,
   IRegisteredTask_get_Name: 7,
@@ -162,4 +168,96 @@ export function listScheduledTasks(): ScheduledTask[] {
     comRelease(service);
   }
   return tasks;
+}
+
+/** CoCreateInstance(TaskScheduler) + Connect to the local machine as the current user. Returns the ITaskService pointer
+ *  (caller comReleases) or 0n. Shared by the create/delete writers (listScheduledTasks inlines the same sequence). */
+function connectTaskService(): bigint {
+  Combase.CoInitializeEx(null, COINIT_APARTMENTTHREADED); // idempotent (S_FALSE if already initialized on this thread)
+  const out = Buffer.alloc(8);
+  if (Combase.CoCreateInstance(guid(CLSID_TaskScheduler).ptr!, 0n, CLSCTX_INPROC_SERVER, guid(IID_ITaskService).ptr!, out.ptr!) !== S_OK) return 0n;
+  const service = out.readBigUInt64LE(0);
+  if (service === 0n) return 0n;
+  const emptyVariant = Buffer.alloc(16); // 4× VT_EMPTY → local machine, current user
+  if (vcall(service, TASK_SLOT.ITaskService_Connect, [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], [emptyVariant.ptr!, emptyVariant.ptr!, emptyVariant.ptr!, emptyVariant.ptr!]) !== S_OK) {
+    comRelease(service);
+    return 0n;
+  }
+  return service;
+}
+
+/**
+ * Create (or update) a scheduled task in the root folder from a task-definition XML string — the no-shell equivalent of
+ * schtasks /create or Register-ScheduledTask. The XML drives ANY trigger/action/principal, so this is ONE general
+ * primitive (not a bespoke autorun tool); `name` is the task name within the root folder. Registers as the current
+ * interactive user (no stored password). true on success. Drives ITaskService/ITaskDefinition/ITaskFolder via umbriel's
+ * own COM machinery (no @bun-win32/taskschd).
+ */
+export function createTask(name: string, xml: string): boolean {
+  const service = connectTaskService();
+  if (service === 0n) return false;
+  try {
+    const defOut = Buffer.alloc(8);
+    if (vcall(service, TASK_SLOT.ITaskService_NewTask, [FFIType.i32, FFIType.ptr], [0, defOut.ptr!]) !== S_OK) return false;
+    const definition = defOut.readBigUInt64LE(0);
+    if (definition === 0n) return false;
+    try {
+      const xmlBstr = allocBstr(xml);
+      const putResult = vcall(definition, TASK_SLOT.ITaskDefinition_put_XmlText, [FFIType.ptr], [xmlBstr]);
+      Oleaut32.SysFreeString(xmlBstr);
+      if (putResult !== S_OK) return false;
+      const rootBstr = allocBstr('\\');
+      const folderOut = Buffer.alloc(8);
+      const gotFolder = vcall(service, TASK_SLOT.ITaskService_GetFolder, [FFIType.ptr, FFIType.ptr], [rootBstr, folderOut.ptr!]);
+      Oleaut32.SysFreeString(rootBstr);
+      if (gotFolder !== S_OK) return false;
+      const folder = folderOut.readBigUInt64LE(0);
+      try {
+        const nameBstr = allocBstr(name);
+        const variant = Buffer.alloc(16); // VT_EMPTY userId / password / sddl, reused (read-only by the callee)
+        const registeredOut = Buffer.alloc(8);
+        const registered = vcall(
+          folder,
+          TASK_SLOT.ITaskFolder_RegisterTaskDefinition,
+          [FFIType.ptr, FFIType.u64, FFIType.i32, FFIType.ptr, FFIType.ptr, FFIType.i32, FFIType.ptr, FFIType.ptr],
+          [nameBstr, definition, TASK_CREATE_OR_UPDATE, variant.ptr!, variant.ptr!, TASK_LOGON_INTERACTIVE_TOKEN, variant.ptr!, registeredOut.ptr!],
+        );
+        Oleaut32.SysFreeString(nameBstr);
+        if (registered !== S_OK) return false;
+        const registeredTask = registeredOut.readBigUInt64LE(0);
+        if (registeredTask !== 0n) comRelease(registeredTask);
+        return true;
+      } finally {
+        comRelease(folder);
+      }
+    } finally {
+      comRelease(definition);
+    }
+  } finally {
+    comRelease(service);
+  }
+}
+
+/** Delete a scheduled task by name (within the root folder) — the no-shell schtasks /delete. true on success. */
+export function deleteTask(name: string): boolean {
+  const service = connectTaskService();
+  if (service === 0n) return false;
+  try {
+    const rootBstr = allocBstr('\\');
+    const folderOut = Buffer.alloc(8);
+    const gotFolder = vcall(service, TASK_SLOT.ITaskService_GetFolder, [FFIType.ptr, FFIType.ptr], [rootBstr, folderOut.ptr!]);
+    Oleaut32.SysFreeString(rootBstr);
+    if (gotFolder !== S_OK) return false;
+    const folder = folderOut.readBigUInt64LE(0);
+    try {
+      const nameBstr = allocBstr(name);
+      const deleted = vcall(folder, TASK_SLOT.ITaskFolder_DeleteTask, [FFIType.ptr, FFIType.i32], [nameBstr, 0]);
+      Oleaut32.SysFreeString(nameBstr);
+      return deleted === S_OK;
+    } finally {
+      comRelease(folder);
+    }
+  } finally {
+    comRelease(service);
+  }
 }

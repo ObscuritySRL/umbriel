@@ -24,6 +24,8 @@ import {
   cloakReason,
   closeWindow,
   controlService,
+  createTask,
+  deleteTask,
   listScheduledTasks,
   listServices,
   getDisplays,
@@ -268,8 +270,8 @@ const cursorDenied = (Bun.env.UMBRIEL_CURSOR ?? '').toLowerCase() === 'never';
 // Forensic audit trail (default-ON, only widen-able): every MUTATING-category tools/call (read tools too under
 // `verbose`) emits one structured JSON line {ts,tool,category,args(masked),ok,error} to STDERR (stdout is reserved
 // for JSON-RPC). It cannot be SILENTLY disabled — UMBRIEL_AUDIT=off is the deployer's EXPLICIT opt-out, reported at
-// startup. Secret-bearing args (type/paste/set_value/set_clipboard/write_file/java_set_text/registry_set text|value|
-// content|data) are masked to a length by maskArgs, never logged verbatim.
+// startup. Secret-bearing args (type/paste/set_value/set_clipboard/write_file/java_set_text/registry_set/manage_task
+// text|value|content|data|xml) are masked to a length by maskArgs, never logged verbatim.
 const auditMode: 'off' | 'on' | 'verbose' = (() => {
   const raw = (Bun.env.UMBRIEL_AUDIT ?? '').toLowerCase();
   if (raw === 'off') return 'off';
@@ -771,7 +773,7 @@ function errorResult(text: string): object {
 
 // Args whose value is free text the model wrote — masked in the trace to its length, so a recorded journal never
 // leaks pasted secrets / typed credentials while still telling you HOW MUCH text the step carried.
-const TRACE_MASK_KEYS = new Set(['content', 'text', 'value', 'data']);
+const TRACE_MASK_KEYS = new Set(['content', 'text', 'value', 'data', 'xml']);
 // Args whose value is a whole command LINE the model wrote (run_program/launch_app `command`) — the inline home of
 // credentials (`mysql --password=…`, `curl -H 'Authorization: Bearer …'`). Unlike an args[] array (collapsed to a count)
 // the string carries the secret verbatim, so it must be masked to its leading executable token + a remainder length.
@@ -2154,6 +2156,22 @@ const TOOLS: McpTool[] = [
     category: 'read',
     description: 'List Windows scheduled tasks natively (no schtasks/Get-ScheduledTask shell) — THE #1 autorun/persistence surface: what runs on a schedule or at logon, when each last ran (+ its result code) and runs next, and whether it is enabled. Recursively walks every task folder; hidden tasks included. Optional {folder} prefix filter (e.g. "\\\\Microsoft\\\\Windows") and {enabledOnly}.',
     inputSchema: { type: 'object', properties: { folder: { type: 'string', description: 'Only tasks whose folder path starts with this prefix (e.g. "\\\\Microsoft")' }, enabledOnly: { type: 'boolean', description: 'Only enabled tasks' } } },
+  },
+  {
+    name: 'manage_task',
+    category: 'os',
+    description:
+      'Create/update or delete a Windows scheduled task natively (no schtasks /create|/delete, no Register/Unregister-ScheduledTask shell). {action:"create"} registers (or updates) a task in the root folder under {name} from a task-definition {xml} string — the XML carries the trigger(s)/action(s)/principal, so it drives ANY schedule (at logon, daily, on-idle, …); generate it in the Task Scheduler schema. {action:"delete"} removes the task by {name}. Runs as the current interactive user. REQUIRES {confirm:true} — a task is an autorun/persistence entry. Gated behind the "os" category; destructive.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['create', 'delete'] },
+        name: { type: 'string', description: 'Task name within the root folder' },
+        xml: { type: 'string', description: 'Task-definition XML (Task Scheduler schema) — required for create' },
+        confirm: { type: 'boolean', description: 'MUST be true to create/delete (safety gate)' },
+      },
+      required: ['action', 'name', 'confirm'],
+    },
   },
   {
     name: 'control_service',
@@ -3561,6 +3579,15 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (args.enabledOnly === true) tasks = tasks.filter((task) => task.enabled);
     if (tasks.length === 0) return errorResult(`list_scheduled_tasks: no tasks${folderFilter !== '' ? ` under "${args.folder}"` : ''} (or the Task Scheduler service is unreachable)`);
     return textResult(`${tasks.length} scheduled tasks:\n${tasks.map((task) => `${task.enabled ? '' : '[disabled] '}${task.path}\\${task.name} — ${task.state}, last ${task.lastRun || 'never'} (${task.lastResult}), next ${task.nextRun || '—'}`).join('\n')}`);
+  },
+  manage_task: (args) => {
+    const action = args.action;
+    if (action !== 'create' && action !== 'delete') return errorResult('manage_task: {action} must be "create" or "delete"');
+    const name = requireString(args, 'name');
+    if (args.confirm !== true) return errorResult('manage_task: refusing without {confirm:true} — a scheduled task is an autorun/persistence entry; pass confirm:true once you are sure of the name/action/xml');
+    if (action === 'delete') return deleteTask(name) ? textResult(`deleted scheduled task "${name}"`) : errorResult(`manage_task: could not delete "${name}" — not found in the root folder, or access-denied (a protected/system task needs elevation; see current_user)`);
+    const xml = requireString(args, 'xml');
+    return createTask(name, xml) ? textResult(`created scheduled task "${name}"`) : errorResult(`manage_task: could not create "${name}" — check the {xml} is valid Task Scheduler XML and you have rights (HKLM/system-scope tasks need elevation; see current_user)`);
   },
   control_service: (args) => {
     const name = requireString(args, 'name');

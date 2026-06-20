@@ -130,6 +130,7 @@
     "example:launch-store-app": "bun ./example/launch-store-app.integration.test.ts",
     "example:locate-all-images": "bun ./example/locate-all-images.integration.test.ts",
     "example:manage-process": "bun ./example/manage-process.integration.test.ts",
+    "example:manage-task-create-delete": "bun ./example/manage-task-create-delete.integration.test.ts",
     "example:mcp-pattern-no-raise": "bun ./example/mcp-pattern-no-raise.integration.test.ts",
     "example:mcp-snapshot-economy": "bun ./example/mcp-snapshot-economy.integration.test.ts",
     "example:menu-drive": "bun ./example/menu-drive.integration.test.ts",

@@ -107,7 +107,7 @@ export { controlService, listServices, type ServiceAction, type ServiceEntry } f
 export { type EnvScope, getEnv, listEnv, parseScope, setEnv } from './desktop/env';
 export { type EventLogLevel, type EventLogRecord, readEventLog } from './desktop/eventlog';
 export { type DisplayInfo, getDisplays } from './desktop/display';
-export { listScheduledTasks, type ScheduledTask, TASK_SLOT } from './desktop/tasks';
+export { createTask, deleteTask, listScheduledTasks, type ScheduledTask, TASK_SLOT } from './desktop/tasks';
 export { type IdleOptions, waitForIdle } from './desktop/idle';
 export { isJavaWindow, javaInvoke, type JavaNode, javaSetText, type JavaTarget, javaTree, renderJavaTree } from './element/jab';
 export {

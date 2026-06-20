@@ -552,11 +552,16 @@ describe('Task Scheduler SLOT table ↔ taskschd.h (tasks.ts)', () => {
     const taskFolder = findInterface(scoped, 'ITaskFolder');
     const registeredTask = findInterface(scoped, 'IRegisteredTask');
     const collection = findInterface(scoped, 'IRegisteredTaskCollection');
+    const taskDefinition = findInterface(scoped, 'ITaskDefinition');
     expect(taskService?.get('GetFolder')).toBe(TASK_SLOT.ITaskService_GetFolder);
+    expect(taskService?.get('NewTask')).toBe(TASK_SLOT.ITaskService_NewTask);
     expect(taskService?.get('Connect')).toBe(TASK_SLOT.ITaskService_Connect);
+    expect(taskDefinition?.get('put_XmlText')).toBe(TASK_SLOT.ITaskDefinition_put_XmlText);
     expect(taskFolder?.get('get_Path')).toBe(TASK_SLOT.ITaskFolder_get_Path);
     expect(taskFolder?.get('GetFolders')).toBe(TASK_SLOT.ITaskFolder_GetFolders);
+    expect(taskFolder?.get('DeleteTask')).toBe(TASK_SLOT.ITaskFolder_DeleteTask);
     expect(taskFolder?.get('GetTasks')).toBe(TASK_SLOT.ITaskFolder_GetTasks);
+    expect(taskFolder?.get('RegisterTaskDefinition')).toBe(TASK_SLOT.ITaskFolder_RegisterTaskDefinition);
     expect(collection?.get('get_Count')).toBe(TASK_SLOT.Collection_get_Count);
     expect(collection?.get('get_Item')).toBe(TASK_SLOT.Collection_get_Item);
     expect(registeredTask?.get('get_Name')).toBe(TASK_SLOT.IRegisteredTask_get_Name);
