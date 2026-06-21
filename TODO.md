@@ -32,6 +32,11 @@ removed.
   arg, correctly nullable) and recovers the pid on demand via `QueryServiceStatusEx`.
 - **Fix:** mark `pszGroupName` `_In_opt_` → `LPCWSTR | NULL` in `@bun-win32/advapi32`; then
   `list_services` can carry the pid per row and drop the per-service round-trip.
+- **Verification (2026-06-21):** bun-win32's own `nullcheck.ts advapi32` + `audit.ts advapi32` do NOT auto-flag
+  `pszGroupName` (tooling-silent — likely a SAL-parse gap, since MS Learn documents it `_In_opt_`). So this is an
+  OWNER-JUDGMENT call, not an auto-fixable audit hit: confirm the `_In_opt_` against the SDK header before retyping, then
+  `nullcheck.ts --fix` (or hand-add `| NULL`). NOT changed autonomously — umbriel's non-Ex workaround is unaffected
+  either way. (The 252-vs-301 measurement above is real evidence the NULL-for-all-services limitation exists.)
 
 ### WindowsAccessBridge-64.dll · Java Access Bridge (~9 symbols) · no binding — `HAND-ROLLED` (`element/jab.ts:34-43`)
 - **Need:** drive Swing/AWT/JavaFX windows, which expose nothing to UIA/MSAA (only their top-level
@@ -42,15 +47,22 @@ removed.
   `getAccessibleContextInfo`, `getAccessibleChildFromContext`, `getAccessibleActions`,
   `doAccessibleActions`, `setTextContents`, `releaseJavaObject`. This predates the
   hand-roll-and-flag policy; recorded now for visibility.
-- **Fix (optional, owner decision):** wrap WindowsAccessBridge-64.dll as `@bun-win32/windowsaccessbridge`
-  (only ~9 read/act exports are used). It is an "internal alternate engine," so upstreaming is a
-  nice-to-have for consistency, not a blocker — keep the lazy/fault-tolerant `dlopen` behavior either way.
+- **Status of the upstream binding:** the owner is CREATING this binding in another session — it will publish as
+  `@bun-win32/windowsaccessbridge64` (owner's stated guess; not tonight). It is genuinely uncovered today (no
+  `windowsaccessbridge*`/`jab`/`accessbridge`/`java` package on npm; the upstream `packages/windowsaccessbridge-64/` is
+  the WIP). So the `element/jab.ts` `dlopen` hand-roll stays correct + necessary until that publishes.
+- **Fix (in progress, owner):** once `@bun-win32/windowsaccessbridge64` is published, add it as a dep and replace the
+  `element/jab.ts` hand-roll with it — keeping the lazy/fault-tolerant behavior (the DLL is absent without a JAB-enabled
+  JDK/JRE, so a missing bridge must still degrade to `isJavaWindow()=false`, never throw at import).
 
-### ~~iphlpapi / ws2_32 · network enumeration~~ — CORRECTION: the bindings EXIST; being built in-repo
-- **PRIOR CLAIM WAS WRONG (a fabrication):** an earlier entry said "NO installed `@bun-win32/*` binding exposes
-  `iphlpapi` or `ws2_32`." A finder verified only that they were absent from umbriel's *installed* deps and that was
-  written up as "no binding exists." **Both are published** — `@bun-win32/iphlpapi` (npm 1.0.5) and `@bun-win32/ws2_32`
-  (npm 1.0.6), present in the upstream `packages/`, with `GetAdaptersAddresses`/`GetExtendedTcpTable`/`GetExtendedUdpTable`
-  etc. → NOT an owner gap. Network read tools are buildable now by adding the dep; tracked as a capability build, not a
-  binding gap. (Remove this note once shipped.)
+## Resolved this session (no owner action — recorded so the fabricated "no binding" claims don't resurface)
+- **iphlpapi / ws2_32 / powrprof / ntdll were NOT missing bindings** — all published. The prior "no binding exists"
+  entries were a fabrication (a finder checked only umbriel's *installed* deps, not the registry/upstream). Now SHIPPED:
+  `power_state` sleep/hibernate (powrprof), `list_adapters`/`list_connections` (iphlpapi), process_info command-line/cwd
+  (ntdll). Deps added + used; nothing for the owner to do. See findings/2026-06-21-binding-truth.md.
+- **kernel32 `ReadProcessMemory` is NOT broken** — a subagent claimed its `bigint`-typed `lpNumberOfBytesRead` made it
+  "uncallable, needs a hand-roll." VERIFIED FALSE: it is callable — pass `0n` (the read succeeds live); only a non-zero
+  `BigInt(ptr)` throws. `audit.ts kernel32` flags nothing. The `bigint` typing is an accepted convention (pass `0n` to
+  ignore the count; you just can't *retrieve* the count through it). umbriel reads remote memory via
+  `ntdll.NtReadVirtualMemory` (typed `PSIZE_T | NULL`, proven live). No bun-win32 change made.
 
