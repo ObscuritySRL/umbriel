@@ -101,6 +101,8 @@ import {
   renderWindowTree,
   parseHive,
   readEventLog,
+  registryCreateKey,
+  registryDeleteKey,
   registryDeleteValue,
   registryGet,
   registryList,
@@ -2246,6 +2248,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { hive: { type: 'string', enum: ['HKLM', 'HKCU', 'HKCR', 'HKU'] }, key: { type: 'string', description: 'Subkey path (must already exist)' }, value: { type: 'string', description: 'Value name (omit for the key default)' }, type: { type: 'string', enum: ['REG_SZ', 'REG_EXPAND_SZ', 'REG_DWORD', 'REG_QWORD', 'REG_MULTI_SZ'] }, data: { description: 'string | integer | string[] matching {type}' }, delete: { type: 'boolean', description: 'Delete the value instead of writing' }, confirm: { type: 'boolean', description: 'MUST be true to perform the write (safety gate)' } }, required: ['hive', 'key', 'confirm'] },
   },
   {
+    name: 'registry_key',
+    category: 'os',
+    description: 'Create or delete a registry KEY natively (no reg add/reg delete/New-Item/Remove-Item shell) — the half registry_set lacks: seed a new HKCU\\Software\\<App> config subtree BEFORE registry_set can write a value into it, or remove an app/policy key. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {action} ∈ create|delete. create makes the key AND any missing parent keys (idempotent — reports created vs already-existed). delete removes the key; a bare delete refuses a key that still has subkeys, so pass {recursive:true} to delete the whole subtree. REQUIRES {confirm:true} — a recursive delete nukes every descendant. HKLM/protected keys need elevation (clean access-denied). Gated behind the "os" category; destructive.',
+    inputSchema: { type: 'object', properties: { hive: { type: 'string', enum: ['HKLM', 'HKCU', 'HKCR', 'HKU'] }, key: { type: 'string', description: 'Subkey path, e.g. "Software\\\\MyApp\\\\Config"' }, action: { type: 'string', enum: ['create', 'delete'] }, recursive: { type: 'boolean', description: 'On delete, also remove all subkeys (required to delete a key that has subkeys)' }, confirm: { type: 'boolean', description: 'MUST be true to create/delete (safety gate)' } }, required: ['hive', 'key', 'action', 'confirm'] },
+  },
+  {
     name: 'open_path',
     category: 'os',
     description: 'Open a file, folder, or URL with its default handler (Explorer/browser). Gated behind the "os" category.',
@@ -3741,6 +3749,22 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (!('data' in args)) return errorResult('registry_set: provide {data} — a string for SZ/EXPAND_SZ, an integer for DWORD/QWORD, a string[] for MULTI_SZ');
     if (!registrySet(hive, key, valueName, type, args.data)) return errorResult(`registry_set: could not set ${hive}\\${key}\\${valueName || '(default)'} — the key must already exist, {data} must match ${type}, and HKLM/protected keys need elevation (see current_user)`);
     return textResult(`set ${hive}\\${key}\\${valueName || '(default)'} = (${type})`);
+  },
+  registry_key: (args) => {
+    const hive = parseHive(requireString(args, 'hive'));
+    if (hive === null) return errorResult('registry_key: hive must be HKLM, HKCU, HKCR, or HKU');
+    const key = requireString(args, 'key');
+    const action = args.action;
+    if (action !== 'create' && action !== 'delete') return errorResult('registry_key: {action} must be create or delete');
+    if (args.confirm !== true) return errorResult('registry_key: refusing to modify the registry without {confirm:true} — creating or (especially recursively) deleting a key can corrupt the machine or an app; pass confirm:true once you are sure of the hive/key/action');
+    if (action === 'create') {
+      const result = registryCreateKey(hive, key);
+      if (result === null) return errorResult(`registry_key: could not create ${hive}\\${key} — HKLM/protected keys need elevation (see current_user)`);
+      return textResult(`${result === 'created' ? 'created' : 'already existed'} ${hive}\\${key}`);
+    }
+    const recursive = args.recursive === true;
+    if (!registryDeleteKey(hive, key, recursive)) return errorResult(`registry_key: could not delete ${hive}\\${key} — it may not exist${recursive ? ', or the delete is access-denied (HKLM/protected keys need elevation; see current_user)' : ', or it still has subkeys (pass {recursive:true} to delete the whole subtree)'}`);
+    return textResult(`deleted ${hive}\\${key}${recursive ? ' (recursive)' : ''}`);
   },
   run_program: async (args) => {
     const command = requireString(args, 'command');

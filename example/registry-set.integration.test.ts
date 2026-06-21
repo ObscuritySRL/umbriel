@@ -11,7 +11,7 @@
  *
  * Run: bun run example/registry-set.integration.test.ts
  */
-import Advapi32, { HKEY_CURRENT_USER, RegKeyAccessRights } from '@bun-win32/advapi32';
+import { registryCreateKey, registryDeleteKey } from '../desktop/registry';
 
 type Rpc = { id?: number; result?: { isError?: boolean; content?: { text?: string }[] } };
 let failures = 0;
@@ -62,10 +62,7 @@ const textOf = (m: Rpc): string => m.result?.content?.[0]?.text ?? '';
 const isErr = (m: Rpc): boolean => m.result?.isError === true;
 
 const SUB = 'umbriel_probe_regset_DELETEME';
-const subkeyWide = Buffer.from(`${SUB}\0`, 'utf16le');
-const created = Buffer.alloc(8);
-Advapi32.RegCreateKeyExW(HKEY_CURRENT_USER, subkeyWide.ptr!, 0, null, 0, RegKeyAccessRights.KEY_SET_VALUE | RegKeyAccessRights.KEY_READ, null, created.ptr!, null);
-Advapi32.RegCloseKey(created.readBigUInt64LE(0));
+registryCreateKey('HKCU', SUB); // dogfooded: umbriel's OWN create primitive (was a raw Advapi32.RegCreateKeyExW reach-around — the gap registry_key now closes)
 
 const full = connect('full');
 const safe = connect('safe');
@@ -94,13 +91,7 @@ try {
   const names = ((list as { result?: { tools?: { name: string }[] } }).result?.tools ?? []).map((t) => t.name);
   assert(!names.includes('registry_set'), 'registry_set is NOT exposed under the safe profile (os-gated)');
 } finally {
-  const reopen = Buffer.alloc(8);
-  if (Advapi32.RegOpenKeyExW(HKEY_CURRENT_USER, subkeyWide.ptr!, 0, RegKeyAccessRights.KEY_SET_VALUE, reopen.ptr!) === 0) {
-    const handle = reopen.readBigUInt64LE(0);
-    for (const name of ['str', 'num']) Advapi32.RegDeleteValueW(handle, Buffer.from(`${name}\0`, 'utf16le').ptr!);
-    Advapi32.RegCloseKey(handle);
-  }
-  Advapi32.RegDeleteKeyW(HKEY_CURRENT_USER, subkeyWide.ptr!);
+  registryDeleteKey('HKCU', SUB, true); // dogfooded: umbriel's OWN recursive delete (RegDeleteTreeW removes the throwaway key AND its values in one call)
   full.kill();
   safe.kill();
 }

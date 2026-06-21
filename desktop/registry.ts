@@ -3,7 +3,7 @@
 // with a NULL data buffer to learn size+type, then the real read), value decoded by RegType. Zero new bindings — every
 // Reg* call is already in @bun-win32/advapi32 (the package element/window.ts already imports for the token path).
 
-import Advapi32, { HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, RegKeyAccessRights, RegType } from '@bun-win32/advapi32';
+import Advapi32, { HKEY_CLASSES_ROOT, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, HKEY_USERS, RegDisposition, RegKeyAccessRights, RegOption, RegType } from '@bun-win32/advapi32';
 
 const ERROR_SUCCESS = 0;
 const ERROR_MORE_DATA = 234;
@@ -202,4 +202,28 @@ export function registrySet(hive: RegistryHive, key: string, valueName: string, 
   } finally {
     Advapi32.RegCloseKey(handle);
   }
+}
+
+/** Create a registry KEY (and any missing intermediate keys in the path) under a hive — the half registrySet lacks
+ *  (registrySet writes a VALUE on an EXISTING key, so a brand-new HKCU\Software\<App> subtree must be created first).
+ *  Returns 'created' (newly made) or 'existed' (RegCreateKeyExW opens a present key), or null on access-denied / error. */
+export function registryCreateKey(hive: RegistryHive, key: string): 'created' | 'existed' | null {
+  const root = hive === 'HKLM' ? HKEY_LOCAL_MACHINE : hive === 'HKCU' ? HKEY_CURRENT_USER : hive === 'HKCR' ? HKEY_CLASSES_ROOT : HKEY_USERS;
+  const subkey = Buffer.from(`${key}\0`, 'utf16le');
+  const handleOut = Buffer.alloc(8);
+  const dispositionOut = Buffer.alloc(4);
+  if (Advapi32.RegCreateKeyExW(root, subkey.ptr!, 0, null, RegOption.REG_OPTION_NON_VOLATILE, RegKeyAccessRights.KEY_WRITE, null, handleOut.ptr!, dispositionOut.ptr!) !== ERROR_SUCCESS) return null;
+  Advapi32.RegCloseKey(handleOut.readBigUInt64LE(0)); // the create returns an open handle; we only needed the key made
+  return dispositionOut.readUInt32LE(0) === RegDisposition.REG_CREATED_NEW_KEY ? 'created' : 'existed';
+}
+
+/** Delete a registry KEY. {recursive} → RegDeleteTreeW, which removes the named key AND its entire subtree (verified
+ *  live: it deletes the key itself, not just its descendants). Non-recursive → RegDeleteKeyExW, which deletes ONLY a
+ *  key that has no subkeys (Windows refuses a non-empty key → false, steering the caller to {recursive:true}). true on
+ *  success; false if the key is absent, non-empty (non-recursive), or the delete is access-denied (HKLM needs elevation). */
+export function registryDeleteKey(hive: RegistryHive, key: string, recursive: boolean): boolean {
+  const root = hive === 'HKLM' ? HKEY_LOCAL_MACHINE : hive === 'HKCU' ? HKEY_CURRENT_USER : hive === 'HKCR' ? HKEY_CLASSES_ROOT : HKEY_USERS;
+  const subkey = Buffer.from(`${key}\0`, 'utf16le');
+  if (recursive) return Advapi32.RegDeleteTreeW(root, subkey.ptr!) === ERROR_SUCCESS; // removes the key + all descendants in one call
+  return Advapi32.RegDeleteKeyExW(root, subkey.ptr!, 0, 0) === ERROR_SUCCESS; // samDesired=0 (default view), Reserved=0; fails if the key has subkeys
 }
