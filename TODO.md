@@ -53,3 +53,15 @@ removed.
   from `package.json` deps).
 - **Fix (owner decision):** add a `@bun-win32/iphlpapi` (and/or `ws2_32`) binding dep — weighing the
   new dependency + attack surface — then umbriel can build the network read tools natively.
+
+### powrprof · `SetSuspendState` (sleep / hibernate) · no binding — `GAP` (new dep)
+- **Need:** `power_state` ships lock/logoff/restart/shutdown natively (User32 `LockWorkStation`/`ExitWindowsEx` +
+  advapi32 token privilege, all already bound). The two REMAINING session/power states — **sleep** and **hibernate** —
+  go through `SetSuspendState` (powrprof.dll), so they are the one part of the session/power primitive an agent still
+  cannot reach without a shell (`rundll32 powrprof.dll,SetSuspendState` / `shutdown /h`).
+- **Blocker:** NO installed `@bun-win32/*` binding exposes `powrprof` (verified absent from `package.json` deps +
+  `node_modules/@bun-win32/`). `SetSystemPowerState` (kernel32, bound) is the deprecated predecessor and unreliable on
+  modern Win11, so it is not a substitute.
+- **Fix (owner decision):** add a `@bun-win32/powrprof` binding exposing `SetSuspendState(BOOLEAN bHibernate,
+  BOOLEAN bForce, BOOLEAN bWakeupEventsDisabled)`; then `power_state` gains `sleep`/`hibernate` actions with no other
+  change (the privilege/gating plumbing already exists in `desktop/power.ts`).
