@@ -192,6 +192,12 @@ describe('WGC + MSAA + D3D11 SLOT coverage (wgc.ts / msaa.ts)', () => {
     // TextRange.Select=16 collides by name with SelectionItem.Select=3, so it lives as a local const in
     // patterns.ts (TEXTRANGE_SELECT) and is verified here by interface, not via the name-keyed SLOT block.
     ['um', 'UIAutomationClient.h', 'IUIAutomationTextRange', 'Select', 16],
+    // firewall.ts walks the rule collection via IEnumVARIANT::Next — a DIRECT vcall(enumerator, ENUM_NEXT, …) on a
+    // bare local const (NOT a FIREWALL_SLOT member), so the netfw.h block, the referenced⇔header-gated drift guard,
+    // and the call-site drift guard ALL miss it. Gate the value here against oaidl.h's authoritative IEnumVARIANTVtbl
+    // order (QueryInterface 0 / AddRef 1 / Release 2 / Next 3 / Skip 4), and pin firewall.ts's ENUM_NEXT literal to it
+    // below (mirrors the TEXTRANGE_SELECT treatment — both are bare local-const slots outside the SLOT table).
+    ['um', 'oaidl.h', 'IEnumVARIANT', 'Next', 3],
   ];
   // [subdir, header, interface, method, expected slot] — C++ pure-virtual IFACEMETHOD interfaces (no Vtbl).
   const IFACE: ReadonlyArray<readonly ['um' | 'winrt', string, string, string, number]> = [
@@ -436,6 +442,18 @@ describe('slot-gate coverage ↔ engine call sites (no drift)', () => {
     const textRangeSelect = constValues(source).get('TEXTRANGE_SELECT');
     expect(textRangeSelect).not.toBeUndefined(); // the const must exist and be parseable (a sanity check on the parser)
     expect(textRangeSelect).toBe(16); // 16 = the slot the VTBL block above verifies vs UIAutomationClient.h IUIAutomationTextRange.Select; a wrong literal fails loudly here
+  });
+
+  // firewall.ts's IEnumVARIANT::Next is dispatched through a bare `const ENUM_NEXT` (not a FIREWALL_SLOT member), so it
+  // is invisible to the netfw.h block, the referenced⇔header-gated drift guard, AND the call-site drift guard (the same
+  // blind spot TEXTRANGE_SELECT has). The VTBL block above header-verifies the value 3 against oaidl.h's IEnumVARIANTVtbl
+  // order; this pins firewall.ts's OWN literal to it, so a 3->4 typo (= Skip, a 2-arg ULONG method called with Next's
+  // 3-arg [u32,ptr,ptr] signature → 2nd/3rd args read from garbage registers → uncatchable host crash) fails loudly here.
+  test('firewall.ts ENUM_NEXT literal matches the header-verified IEnumVARIANT::Next slot (3)', () => {
+    const source = readFileSync(engineFile('firewall.ts'), 'utf8');
+    const enumNext = constValues(source).get('ENUM_NEXT');
+    expect(enumNext).not.toBeUndefined(); // the const must exist and be parseable (a sanity check on the parser)
+    expect(enumNext).toBe(3); // 3 = the slot the VTBL block above verifies vs oaidl.h IEnumVARIANT::Next; a wrong literal fails loudly here
   });
 });
 
