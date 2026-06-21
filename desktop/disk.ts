@@ -24,7 +24,7 @@ export function listVolumes(): VolumeInfo[] {
   const length = Kernel32.GetLogicalDriveStringsW(256, buffer.ptr!); // returns chars copied (excl. the final NUL)
   if (length === 0) return [];
   const roots = buffer.toString('utf16le', 0, length * 2).split('\0').filter((entry) => entry.length > 0);
-  const ignored = Buffer.alloc(4); // the three GetVolumeInformationW out-params we discard (serial / max-component-len / fs-flags) — all DWORD; the binding types them non-nullable LPDWORD (a missed _Out_opt_, see TODO.md), so we pass one writable 4-byte scratch they harmlessly overwrite rather than NULL
+  const ignored = Buffer.alloc(4); // the three GetVolumeInformationW out-params we discard (serial / max-component-len / fs-flags) — each a DWORD the API writes; the binding types them non-nullable LPVOID (MS Learn documents them LPDWORD _Out_opt_, see TODO.md), so we pass one writable 4-byte scratch they harmlessly overwrite rather than NULL
   const volumes: VolumeInfo[] = [];
   for (const drive of roots) {
     const rootWide = Buffer.from(`${drive}\0`, 'utf16le');

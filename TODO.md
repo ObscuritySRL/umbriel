@@ -25,8 +25,9 @@ removed.
   it does not want the serial number, max-component-length, or filesystem-flags — all documented `_Out_opt_` on MS Learn,
   so the natural call passes `NULL` for those three.
 - **Blocker (minor):** `@bun-win32/kernel32` types `lpVolumeSerialNumber` / `lpMaximumComponentLength` /
-  `lpFileSystemFlags` as non-nullable `LPDWORD` (the generator missed their `_Out_opt_`), and casts are forbidden, so
-  `NULL` does not type-check.
+  `lpFileSystemFlags` as non-nullable `LPVOID` (MS Learn documents each as `LPDWORD _Out_opt_` — the generator both
+  widened the type to `LPVOID` and missed the `_Out_opt_` nullability), and casts are forbidden, so `NULL` does not
+  type-check.
 - **Workaround in umbriel (shipped):** `disk.ts` passes ONE shared writable 4-byte scratch buffer for all three discarded
   out-params (the API harmlessly overwrites it; the values are never read). Zero functional cost — NOT blocked, unlike the
   `EnumServicesStatusExW` case below; flagged only so the typing can be relaxed.
