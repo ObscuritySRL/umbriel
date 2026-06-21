@@ -52,24 +52,16 @@ removed.
   `nullcheck.ts --fix` (or hand-add `| NULL`). NOT changed autonomously — umbriel's non-Ex workaround is unaffected
   either way. (The 252-vs-301 measurement above is real evidence the NULL-for-all-services limitation exists.)
 
-### WindowsAccessBridge-64.dll · Java Access Bridge (~9 symbols) · no binding — `HAND-ROLLED` (`element/jab.ts:34-43`)
-- **Need:** drive Swing/AWT/JavaFX windows, which expose nothing to UIA/MSAA (only their top-level
-  frame). Powers `java_tree` / `java_invoke` / `java_set_text`.
-- **Status:** `element/jab.ts` hand-rolls the DLL via raw `dlopen` (lazy + fault-tolerant — the DLL
-  is absent without a JAB-enabled JDK/JRE, so a missing bridge degrades to `isJavaWindow()=false`,
-  never a throw at import). Symbols: `Windows_run`, `isJavaWindow`, `getAccessibleContextFromHWND`,
-  `getAccessibleContextInfo`, `getAccessibleChildFromContext`, `getAccessibleActions`,
-  `doAccessibleActions`, `setTextContents`, `releaseJavaObject`. This predates the
-  hand-roll-and-flag policy; recorded now for visibility.
-- **Status of the upstream binding:** the owner is CREATING this binding in another session — it will publish as
-  `@bun-win32/windowsaccessbridge64` (owner's stated guess; not tonight). It is genuinely uncovered today (no
-  `windowsaccessbridge*`/`jab`/`accessbridge`/`java` package on npm; the upstream `packages/windowsaccessbridge-64/` is
-  the WIP). So the `element/jab.ts` `dlopen` hand-roll stays correct + necessary until that publishes.
-- **Fix (in progress, owner):** once `@bun-win32/windowsaccessbridge64` is published, add it as a dep and replace the
-  `element/jab.ts` hand-roll with it — keeping the lazy/fault-tolerant behavior (the DLL is absent without a JAB-enabled
-  JDK/JRE, so a missing bridge must still degrade to `isJavaWindow()=false`, never throw at import).
-
 ## Resolved this session (no owner action — recorded so the fabricated "no binding" claims don't resurface)
+- **WindowsAccessBridge-64.dll · Java Access Bridge — binding PUBLISHED + INTEGRATED (hand-roll removed).**
+  `@bun-win32/windowsaccessbridge-64@1.0.0` shipped (note the hyphen — `-64`, not the earlier-guessed
+  `windowsaccessbridge64`). `element/jab.ts` now binds via that package (lazy per-symbol `Load()`) instead of the raw
+  `dlopen` hand-roll, keeping the SAME fault-tolerant degradation: a Java-less box throws on the first `Load()`, caught in
+  `ensureStarted()` → `isJavaWindow()=false` / `javaTree()=null`, never a throw at import. The opaque JOBJECT64 context
+  tokens are u64 in the binding (vs the hand-roll's i64) — byte-identical at the FFI boundary (opaque, never arithmetic'd,
+  round-tripped via `readBigUInt64LE`). Proven LIVE end-to-end on a real Swing app: jab-java-tree (full tree read) +
+  jab-java-act (type / toggle / click / select + the java_tree/java_set_text/java_invoke MCP tools) all green; tsc 0;
+  release-check 16/16 `@bun-win32/*` deps published. The `bun add` added it to package.json (`^1.0.0`).
 - **iphlpapi / ws2_32 / powrprof / ntdll were NOT missing bindings** — all published. The prior "no binding exists"
   entries were a fabrication (a finder checked only umbriel's *installed* deps, not the registry/upstream). Now SHIPPED:
   `power_state` sleep/hibernate (powrprof), `list_adapters`/`list_connections` (iphlpapi), process_info command-line/cwd
