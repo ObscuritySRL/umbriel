@@ -35,6 +35,7 @@ import {
   listEnv,
   setEnv,
   parseScope,
+  powerState,
   processInfo,
   currentUser,
   coldTreeNote,
@@ -2187,6 +2188,20 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Service short name (e.g. "Spooler", not the display name)' }, action: { type: 'string', enum: ['query', 'start', 'stop', 'config'], description: 'default query' } }, required: ['name'] },
   },
   {
+    name: 'power_state',
+    category: 'os',
+    description:
+      'Drive the Windows session/power state natively (no shutdown.exe / logoff / rundll32 user32,LockWorkStation / PowerShell Stop-Computer|Restart-Computer). {action}: "lock" locks the workstation (reversible, no data loss); "logoff" signs the current user out; "restart" reboots; "shutdown" powers off. restart/shutdown are PLANNED + non-forced (apps are asked to close, not killed) and self-enable the shutdown privilege (no elevation for the user\'s own session). REQUIRES {confirm:true} — lock aside, these end the session. Gated behind the "os" category; destructive.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        action: { type: 'string', enum: ['lock', 'logoff', 'restart', 'shutdown'], description: 'lock = lock screen (reversible); logoff = sign out; restart = reboot; shutdown = power off' },
+        confirm: { type: 'boolean', description: 'MUST be true (safety gate — restart/shutdown/logoff end the session)' },
+      },
+      required: ['action', 'confirm'],
+    },
+  },
+  {
     name: 'get_env',
     category: 'read',
     description: 'Read an environment variable, or list all, in a scope: {scope:"process"} (this server\'s live env), "user" (HKCU\\Environment — persists for your account), "machine" (HKLM — system-wide). Give {name} for one, omit it to list every variable in the scope. Natively — no set/echo shell.',
@@ -3628,6 +3643,12 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (result === 'denied') return errorResult(`control_service: "${name}" access-denied — start/stop usually need elevation (see current_user)`);
     if (result === 'not-found') return errorResult(`control_service: no service named "${name}"`);
     return textResult(`${name}: ${result}`);
+  },
+  power_state: (args) => {
+    const action = args.action;
+    if (action !== 'lock' && action !== 'logoff' && action !== 'restart' && action !== 'shutdown') return errorResult('power_state: {action} must be lock | logoff | restart | shutdown');
+    if (args.confirm !== true) return errorResult(`power_state: refusing {action:"${action}"} without {confirm:true} — ${action === 'lock' ? 'this locks the screen' : 'this ends the session'}; pass confirm:true once sure`);
+    return powerState(action) ? textResult(action === 'lock' ? 'workstation locked' : action === 'logoff' ? 'signing out' : action === 'restart' ? 'restarting' : 'shutting down') : errorResult(`power_state: the OS refused "${action}" (could not enable the shutdown privilege, or ExitWindowsEx was blocked — a non-forced ${action} can be vetoed by an app; see current_user for rights)`);
   },
   get_env: (args) => {
     const scope = parseScope(args.scope);
