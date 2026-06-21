@@ -15,6 +15,7 @@
 import { FFIType, JSCallback } from 'bun:ffi';
 
 import Kernel32 from '@bun-win32/kernel32';
+import Ntdll from '@bun-win32/ntdll';
 import User32 from '@bun-win32/user32';
 
 import { listWindows, type WindowInfo } from '../element/window';
@@ -35,6 +36,7 @@ const TH32CS_SNAPPROCESS = 0x0000_0002;
 const TH32CS_SNAPTHREAD = 0x0000_0004;
 const THREAD_SUSPEND_RESUME = 0x0000_0002;
 const PROCESS_SET_INFORMATION = 0x0000_0200;
+const PROCESS_VM_READ = 0x0000_0010; // read another process's memory (the PEB walk for commandLine/workingDir) — read-only, no mutation
 const PROCESS_QUERY_LIMITED_INFORMATION = 0x0000_1000;
 const FILETIME_UNIX_EPOCH_MS = 11_644_473_600_000; // ms between 1601-01-01 (FILETIME epoch) and 1970-01-01 (unix)
 const INVALID_HANDLE = 0xffff_ffff_ffff_ffffn;
@@ -338,7 +340,23 @@ export interface ProcessInfo {
   peakWorkingSetMB: number;
   handleCount: number;
   imagePath: string; // full on-disk exe path, or '' if the detail handle was denied
+  commandLine: string; // the full command line the process was launched with, or '' (denied / 32-bit target / unreadable)
+  workingDir: string; // the process's current directory, or '' (denied / 32-bit target / unreadable)
   children: { processId: number; name: string }[];
+}
+
+/** Read a remote RTL_USER_PROCESS_PARAMETERS UNICODE_STRING (x64: Length USHORT @0, Buffer PWSTR @8) at `address` in the
+ *  process `handle` owns, then read its `Length` bytes from the remote Buffer pointer. '' on any failed/empty read.
+ *  Cross-process reads go through NtReadVirtualMemory (the target's address space; a bad address → error, never a crash). */
+function readRemoteUnicodeString(handle: bigint, address: bigint): string {
+  const unicodeString = Buffer.alloc(16);
+  if (Ntdll.NtReadVirtualMemory(handle, address, unicodeString.ptr!, 16n, null) !== 0) return '';
+  const length = unicodeString.readUInt16LE(0);
+  const remoteBuffer = unicodeString.readBigUInt64LE(8);
+  if (length === 0 || remoteBuffer === 0n) return '';
+  const text = Buffer.alloc(length);
+  if (Ntdll.NtReadVirtualMemory(handle, remoteBuffer, text.ptr!, BigInt(length), null) !== 0) return '';
+  return text.toString('utf16le');
 }
 
 /**
@@ -382,7 +400,9 @@ export function processInfo(processId: number): ProcessInfo | null {
   let peakWorkingSetMB = 0;
   let handleCount = 0;
   let imagePath = '';
-  const handle = Kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, processId);
+  let commandLine = '';
+  let workingDir = '';
+  const handle = Kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ, 0, processId); // VM_READ is read-only — the PEB walk reads, never writes
   if (handle !== 0n) {
     try {
       const creation = Buffer.alloc(8);
@@ -406,11 +426,28 @@ export function processInfo(processId: number): ProcessInfo | null {
       const pathChars = Buffer.alloc(4);
       pathChars.writeUInt32LE(1024, 0); // 2048 bytes / 2
       if (Kernel32.QueryFullProcessImageNameW(handle, 0, pathBuffer.ptr!, pathChars.ptr!) !== 0) imagePath = pathBuffer.toString('utf16le', 0, pathChars.readUInt32LE(0) * 2);
+      // Command line + current directory via the PEB (no wmic/Get-CimInstance shell): NtQueryInformationProcess →
+      // PebBaseAddress, read PEB.ProcessParameters @0x20, then RTL_USER_PROCESS_PARAMETERS.CommandLine @0x70 /
+      // CurrentDirectory.DosPath @0x38 (each a UNICODE_STRING). x64 host+target; a 32-bit (WOW64) target's PEB differs,
+      // so a garbage read just yields '' (guarded), never a crash. Best-effort — '' when the memory can't be read.
+      const basic = Buffer.alloc(48); // PROCESS_BASIC_INFORMATION (x64): PebBaseAddress @8
+      const basicReturn = Buffer.alloc(4);
+      if (Ntdll.NtQueryInformationProcess(handle, 0, basic.ptr!, 48, basicReturn.ptr!) === 0) {
+        const pebBase = basic.readBigUInt64LE(8);
+        const parametersOut = Buffer.alloc(8);
+        if (pebBase !== 0n && Ntdll.NtReadVirtualMemory(handle, pebBase + 0x20n, parametersOut.ptr!, 8n, null) === 0) {
+          const parameters = parametersOut.readBigUInt64LE(0); // PEB.ProcessParameters
+          if (parameters !== 0n) {
+            commandLine = readRemoteUnicodeString(handle, parameters + 0x70n); // RTL_USER_PROCESS_PARAMETERS.CommandLine
+            workingDir = readRemoteUnicodeString(handle, parameters + 0x38n); // CurrentDirectory.DosPath (leading UNICODE_STRING of CURDIR)
+          }
+        }
+      }
     } finally {
       Kernel32.CloseHandle(handle);
     }
   }
-  return { processId, name, parentProcessId, startTime, cpuKernelMs, cpuUserMs, workingSetMB, peakWorkingSetMB, handleCount, imagePath, children };
+  return { processId, name, parentProcessId, startTime, cpuKernelMs, cpuUserMs, workingSetMB, peakWorkingSetMB, handleCount, imagePath, commandLine, workingDir, children };
 }
 
 export interface SystemResources {

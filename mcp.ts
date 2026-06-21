@@ -2134,7 +2134,7 @@ const TOOLS: McpTool[] = [
   {
     name: 'process_info',
     category: 'read',
-    description: 'Deep detail for ONE process by {pid} (no tasklist/Get-Process): name, parent pid, start time, CPU kernel/user ms, working-set + peak MB, open handle count, the on-disk image path (which binary it really is — disambiguates two same-named processes), and the child process list — so you can pick WHICH pid to kill/suspend/reprioritize (the runaway renderer, the leaking child) instead of guessing from the flat list_processes names. Detail fields (incl. image path) read empty/0 for an elevated/protected process; name/parent/children still resolve.',
+    description: 'Deep detail for ONE process by {pid} (no tasklist/Get-Process/wmic): name, parent pid, start time, CPU kernel/user ms, working-set + peak MB, open handle count, the on-disk image path (which binary it really is — disambiguates two same-named processes), the COMMAND LINE it was launched with and its current working directory (the forensic detail otherwise only via wmic/Get-CimInstance Win32_Process — read from the PEB), and the child process list — so you can pick WHICH pid to kill/suspend/reprioritize (the runaway renderer, the leaking child) instead of guessing from the flat list_processes names. Detail fields (incl. image path / command line / cwd) read empty/0 for an elevated/protected process; name/parent/children still resolve.',
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Process id to introspect' } }, required: ['pid'] },
   },
   {
@@ -3591,7 +3591,9 @@ const HANDLERS: Record<string, ToolHandler> = {
     const detail = info.startTime !== '' ? `started ${info.startTime}, cpu ${info.cpuKernelMs + info.cpuUserMs}ms (kernel ${info.cpuKernelMs} + user ${info.cpuUserMs}), working-set ${info.workingSetMB}MB (peak ${info.peakWorkingSetMB}MB), handles ${info.handleCount}` : '(detail unavailable — elevated/protected; see current_user)';
     const children = info.children.length > 0 ? `children (${info.children.length}): ${info.children.map((child) => `${child.name}#${child.processId}`).join(', ')}` : '(no children)';
     const path = info.imagePath !== '' ? `\n${info.imagePath}` : '';
-    return textResult(`${info.name} (pid ${info.processId}, parent ${info.parentProcessId})${path}\n${detail}\n${children}`);
+    const cmd = info.commandLine !== '' ? `\ncmd: ${redactSecrets(info.commandLine)}` : ''; // an argv can carry --password=/-ptoken — route through the same secret redaction every other output uses
+    const cwd = info.workingDir !== '' ? `\ncwd: ${info.workingDir}` : '';
+    return textResult(`${info.name} (pid ${info.processId}, parent ${info.parentProcessId})${path}${cmd}${cwd}\n${detail}\n${children}`);
   },
   read_event_log: (args) => {
     const log = typeof args.log === 'string' ? args.log : 'System';
