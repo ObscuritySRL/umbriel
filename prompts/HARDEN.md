@@ -1,6 +1,8 @@
-HARDEN umbriel @ D:\Projects\umbriel — 88-tool native-Win MCP server. ADD NOTHING: make EXISTS faster/leaner/safer/clearer at ZERO behavior change — every tool output/public sig/policy gate BYTE-IDENTICAL (prove by diff). Pure TS, Bun FFI, NO build. Win32 ONLY via @bun-win32/* (never hand-roll). You=end user. ultracode.
+HARDEN umbriel @ D:\Projects\umbriel — 92-tool native-Win MCP server. ADD NOTHING: make EXISTS faster/leaner/safer/clearer at ZERO behavior change — every tool output/public sig/policy gate BYTE-IDENTICAL (prove by diff). Pure TS, Bun FFI, NO build. Win32 ONLY via @bun-win32/* (never hand-roll). Claude AUTHORED every line here — presume YOUR prior self left ns/bytes/lines/clarity/safety on the table and hunt it; this is your own work to perfect, NO ceiling, no "good enough". You=end user. ultracode.
 
 BAR: ship IFF (1) behavior IDENTICAL (diff out before/after; ANY change=bug) (2) MOVES a measured axis (ns/bytes/lines/allocs/round-trips/err-recovery) (3) proven LIVE + regression-gated. No speculative rewrite; no "cleaner" w/o a number; smallest diff.
+
+SELF-IMPROVEMENT (recursive — sharpen the MACHINE, not only the product): you wrote both the code AND its gates, so presume your PRIOR self left a measurable axis unhardened AND the harden machine itself blunter than it should be. A stronger measurement, a tighter regression gate, a new slot-gate row, or a NEW LANE that catches a defect class the old lanes missed = a HARDEN win in its own right (test/tooling/prompt diffs are byte-identical to the PRODUCT, so they ship freely under ADD-NOTHING). Even THIS prompt is in scope. The PUSH is mandatory, the FINDING is not — a genuine adversarial sweep that surfaces nothing real converges honestly (RESOLUTION below), but "converged" is EARNED by that sweep, never ASSUMED; coasting on a prior convergence is the failure mode. Each pass AIMS to leave both the code AND the machine sharper.
 
 PANEL=parallel lanes, 1 ultracode expert/axis. FIRST ACTION EVERY TURN: spawn ALL finders AT ONCE, HANDS-ON (read+MEASURE live+diff, never memory). LANES:
 • Perf: FFI hot paths, per-call allocs, redundant vcalls/round-trips, lost memoization, struct-assembly/snapshot cost.
@@ -22,4 +24,4 @@ FFI fix: wrong COM slot/offset SEGFAULTS under Bun=JSC→re-verify LIVE + extend
 
 LAW (AGENTS.md): surgical diffs; NO casts ever (fix types); cast-free com.ts vcall; .ptr inline; struct at call site; tsc0 every change; AI.md generic. ABSOLUTE: NO new tools/capability — hardening ONLY. SHIP=commit&push every slice (Conventional Commits 1/win); NO publish/server.json (owner releases). findings/ current (CLEAN lane=CONSTRAINT→next run skips).
 
-ANCHOR (re-verify HEAD: git rev-parse --short HEAD): 88 gated tools (readonly|safe|full), tsc0, 51 unit tests green. FIRST ACTION: spawn ALL finders NOW.
+ANCHOR (re-verify HEAD: git rev-parse --short HEAD): 92 gated tools (readonly|safe|full), tsc0, 52 unit tests green. FIRST ACTION: spawn ALL finders NOW.
