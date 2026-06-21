@@ -236,6 +236,21 @@ export function waitForWindowGone(match: WindowMatch, options: { timeout?: numbe
   });
 }
 
+const WM_NULL = 0x0000; // a no-op probe message — DefWindowProc and every wndproc ignore it; the standard "is this window's thread alive" ping
+const SMTO_ABORTIFHUNG = 0x0002; // return immediately if the target thread is already classified hung, instead of blocking the full timeout
+
+/** Whether `hWnd`'s thread is RESPONSIVE — it pumps messages — via a WM_NULL ping through SendMessageTimeout (the FlaUI
+ *  Wait.UntilResponsive parity umbriel lacked). A FROZEN window that waitForIdle/`wait_idle` falsely reports "settled"
+ *  (its UIA tree stops changing, so it hashes stable) returns false HERE. `IsHungAppWindow` short-circuits the already-hung
+ *  case instantly; otherwise the synchronous call blocks at most ~min(timeoutMs, 5s) — the OS hang-classification window —
+ *  never the full timeout on a steady-hung target. BG-default + focus-free (WM_NULL steals no foreground, synthesizes no
+ *  input). The caller checks `isWindow(hWnd)` first to tell a CLOSED handle (gone) apart from a live-but-hung one. */
+export function windowResponsive(hWnd: bigint, timeoutMs: number): boolean {
+  if (User32.IsHungAppWindow(hWnd) !== 0) return false; // already-hung → instant verdict, skip the (possibly briefly-blocking) send
+  const result = Buffer.alloc(8); // write-only scratch for the LRESULT out-param; never read — the function RETURN is the responded/timed-out flag
+  return User32.SendMessageTimeoutW(hWnd, WM_NULL, 0n, 0n, SMTO_ABORTIFHUNG, timeoutMs, result.ptr!) !== 0n; // i64 return: nonzero = responded, 0n = hung/timed-out
+}
+
 /** Every running process as `{ processId, name }` (toolhelp32 snapshot). The image name is the bare exe (e.g. `notepad.exe`). */
 export function listProcesses(): { processId: number; name: string }[] {
   const snapshot = Kernel32.CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);

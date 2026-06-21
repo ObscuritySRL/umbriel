@@ -61,7 +61,7 @@ umbriel.tree(app, { agentProfile: true });
 
 <sub>Umbriel figures measured on Windows 11, Bun 1.4 (14.3 ms · ~3k tokens on Calculator; single property read ~58 µs) — reproduce with `bun run example/benchmark.ts`. Screenshot-pipeline figures are published third-party results (OSWorld-Human; computer-use image-token costs).</sub>
 
-The MCP server exposes **90 snapshot-first tools** (69 under the default `safe` profile; 35 under `readonly`; the 21 os/fs tools need `full` or `UMBRIEL_OS=1`) behind a deployer policy you control:
+The MCP server exposes **91 snapshot-first tools** (70 under the default `safe` profile; 36 under `readonly`; the 21 os/fs tools need `full` or `UMBRIEL_OS=1`) behind a deployer policy you control:
 
 ```bash
 UMBRIEL_PROFILE=readonly   # observe only
