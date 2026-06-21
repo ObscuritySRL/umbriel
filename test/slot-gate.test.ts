@@ -593,3 +593,44 @@ describe('Windows Firewall SLOT table ↔ netfw.h (firewall.ts)', () => {
     expect(rule?.get('get_Action')).toBe(FIREWALL_SLOT.INetFwRule_get_Action);
   });
 });
+
+// tasks.ts and firewall.ts dispatch their COM getters through helper wrappers (getLong/getBstr/getVariantBool/
+// getDateField), NOT the literal `vcall(this, SLOT, …)` shape the GATED_SLOTS_BY_FILE drift guard above matches — so
+// those two engines are the one blind spot in the call-site↔gate two-way check. Their slot VALUES are gated against
+// taskschd.h / netfw.h by the two describe blocks above, but nothing forced those hand-written `expect` lists to stay
+// in sync with the code: a freshly added+called `FIREWALL_SLOT.<get_Grouping>` (a real ungated INetFwRule property)
+// with no matching `expect` line would ship an UNGATED slot that segfaults uncatchably on any SDK vtable reorder. This
+// closes that blind spot by tying each engine's REFERENCED slot members to the members its header-gate block actually
+// asserts. Pure source parsing (no SDK header, no window) → always-on under `bun test`. The gate-side set is read from
+// the `.toBe(<PREFIX>.member)` assertion shape, which this test's own `PREFIX`-built regex strings cannot match, so the
+// check never counts its own references.
+describe('tasks.ts / firewall.ts SLOT members: referenced ⇔ header-gated (no drift)', () => {
+  const self = readFileSync(`${import.meta.dir}/slot-gate.test.ts`, 'utf8');
+  /** The distinct slot member names accessed as `<PREFIX>.<member>` in an engine source file. */
+  const referenced = (relativePath: string, prefix: string): string[] => {
+    const source = readFileSync(`${import.meta.dir}/${relativePath}`, 'utf8');
+    const members = new Set<string>();
+    const access = new RegExp(`${prefix}\\.([A-Za-z0-9_]+)`, 'g');
+    for (let entry = access.exec(source); entry !== null; entry = access.exec(source)) members.add(entry[1]!);
+    return [...members].sort();
+  };
+  /** The distinct slot member names this file header-verifies via `expect(...).toBe(<PREFIX>.<member>)`. */
+  const gated = (prefix: string): string[] => {
+    const members = new Set<string>();
+    const assertion = new RegExp(`\\.toBe\\(${prefix}\\.([A-Za-z0-9_]+)\\)`, 'g');
+    for (let entry = assertion.exec(self); entry !== null; entry = assertion.exec(self)) members.add(entry[1]!);
+    return [...members].sort();
+  };
+
+  test('every TASK_SLOT member tasks.ts calls is header-gated, and every gated member is called', () => {
+    const called = referenced('../desktop/tasks.ts', 'TASK_SLOT');
+    expect(called.length).toBeGreaterThan(0); // sanity: the parser found real references
+    expect(called).toEqual(gated('TASK_SLOT')); // called-but-ungated → segfaults with zero coverage; gated-but-uncalled → stale curation
+  });
+
+  test('every FIREWALL_SLOT member firewall.ts calls is header-gated, and every gated member is called', () => {
+    const called = referenced('../desktop/firewall.ts', 'FIREWALL_SLOT');
+    expect(called.length).toBeGreaterThan(0);
+    expect(called).toEqual(gated('FIREWALL_SLOT'));
+  });
+});
