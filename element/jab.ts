@@ -18,33 +18,18 @@
 // export: the bridge's AccessibleValue interface is read-only — only get{Current,Maximum,Minimum}AccessibleValueFromContext
 // exist — so a cursor-free value SET would need focus + posted keys, not a JAB primitive.)
 //
-// NOTE: bound via raw dlopen (the same in-package precedent as wgc.ts's d3d11 interop), not a @bun-win32 package — an
-// internal alternate engine; only ~9 read/act exports are used. WindowsAccessBridge-64.dll is ABSENT on machines
-// without a JAB-enabled JDK/JRE, so the dlopen is LAZY + fault-tolerant (see ensureStarted): a missing bridge degrades to
-// isJavaWindow()=false / javaTree()=null / javaInvoke()=false, never a throw at import (a top-level dlopen would brick the
-// whole package on a Java-less box). A full @bun-win32/windowsaccessbridge package is a verified-feasible future extraction.
-
-import { dlopen, FFIType } from 'bun:ffi';
+// NOTE: bound via the @bun-win32/windowsaccessbridge-64 package (lazy per-symbol Load() — no top-level dlopen), of whose
+// ~80 exports only ~9 read/act calls are used here. WindowsAccessBridge-64.dll is ABSENT on machines without a JAB-enabled
+// JDK/JRE, so the binding's first Load() THROWS there; ensureStarted() wraps the first call (Windows_run) in try/catch so a
+// missing bridge degrades to isJavaWindow()=false / javaTree()=null / javaInvoke()=false, never a throw at import (an eager
+// load would brick the whole package on a Java-less box). The opaque JOBJECT64 context tokens are u64 bigints here.
 
 import User32 from '@bun-win32/user32';
+import WindowsAccessBridge from '@bun-win32/windowsaccessbridge-64';
 
 import type { Rect } from '../com/reads';
 
-function openBridge() {
-  return dlopen('WindowsAccessBridge-64.dll', {
-    Windows_run: { args: [], returns: FFIType.void },
-    isJavaWindow: { args: [FFIType.u64], returns: FFIType.i32 },
-    getAccessibleContextFromHWND: { args: [FFIType.u64, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    getAccessibleContextInfo: { args: [FFIType.i32, FFIType.i64, FFIType.ptr], returns: FFIType.i32 },
-    getAccessibleChildFromContext: { args: [FFIType.i32, FFIType.i64, FFIType.i32], returns: FFIType.i64 },
-    getAccessibleActions: { args: [FFIType.i32, FFIType.i64, FFIType.ptr], returns: FFIType.i32 },
-    doAccessibleActions: { args: [FFIType.i32, FFIType.i64, FFIType.ptr, FFIType.ptr], returns: FFIType.i32 },
-    setTextContents: { args: [FFIType.i32, FFIType.i64, FFIType.ptr], returns: FFIType.i32 },
-    releaseJavaObject: { args: [FFIType.i32, FFIType.i64], returns: FFIType.void },
-  }).symbols;
-}
-
-type Bridge = ReturnType<typeof openBridge>;
+type Bridge = typeof WindowsAccessBridge;
 
 let jab: Bridge | null = null;
 
@@ -95,13 +80,14 @@ function pump(rounds: number): void {
 
 /** Open the bridge once and complete the initial JVM-discovery handshake. Idempotent. If WindowsAccessBridge-64.dll is
  *  absent (no JAB-enabled JVM on this machine), `jab` stays null and every public call degrades to its empty contract —
- *  the dlopen must NOT throw at import time (index.ts/mcp.ts import this module unconditionally). */
+ *  the binding's first Load() happens HERE (on first call), not at import, so importing this module never throws even on a
+ *  Java-less box (index.ts/mcp.ts import it unconditionally); the try/catch absorbs the absent-DLL Load() failure. */
 function ensureStarted(): void {
   if (started) return;
   started = true;
   try {
-    jab = openBridge();
-    jab.Windows_run();
+    WindowsAccessBridge.Windows_run(); // first Load() lazily binds the DLL — THROWS here if absent (no JAB-enabled JDK/JRE)
+    jab = WindowsAccessBridge;
     pump(40); // ~1.2s — generous for the JVM to post its registration
   } catch {
     jab = null; // bridge DLL not present — no Java introspection on this box
