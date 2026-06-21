@@ -61,6 +61,7 @@ import {
   isSecureDesktopActive,
   isWindow,
   isWindowVisible,
+  windowResponsive,
   javaInvoke,
   javaSetText,
   javaTree,
@@ -1712,6 +1713,13 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { quietMs: { type: 'number', description: 'Stable-for window in ms (default 400)' }, timeout: { type: 'number', description: 'Max wait in ms (default 5000)' } } },
   },
   {
+    name: 'wait_responsive',
+    category: 'read',
+    description:
+      'Probe whether a window is RESPONSIVE (its UI thread pumps messages) or HUNG/frozen — a WM_NULL ping via SendMessageTimeout, no foreground steal, no input. Unlike wait_idle (which reports a FROZEN window as "settled" because its tree stops changing), this catches a genuinely hung app, so you can escalate (manage_process suspend / kill_process / power_state) instead of waiting forever, or gate input on real readiness after a launch/heavy action. Targets the explicit {hWnd}, a {ref}\'s window, or the attached window.',
+    inputSchema: { type: 'object', properties: { hWnd: { type: 'number', description: 'Target window handle (omit to use {ref} or the attached window)' }, ref: { type: 'string', description: 'An element ref whose window to probe' }, timeoutMs: { type: 'number', description: 'Max wait in ms (default 5000, clamped 50–30000)' } } },
+  },
+  {
     name: 'wait_for_window',
     category: 'read',
     description:
@@ -2685,6 +2693,12 @@ const HANDLERS: Record<string, ToolHandler> = {
   wait_idle: async (args) => {
     const settled = await umbriel.waitForIdle(requireAttached(), { quietMs: typeof args.quietMs === 'number' ? args.quietMs : 400, timeout: typeof args.timeout === 'number' ? args.timeout : 5000 });
     return withSnapshot(settled ? 'UI settled' : 'UI still changing at timeout');
+  },
+  wait_responsive: (args) => {
+    const hWnd = resolveHwnd(args);
+    if (!isWindow(hWnd)) return errorResult('wait_responsive: no such window (the handle is stale or closed — list_windows then attach a live window)');
+    const timeoutMs = Math.min(30_000, Math.max(50, typeof args.timeoutMs === 'number' ? args.timeoutMs : 5_000));
+    return textResult(windowResponsive(hWnd, timeoutMs) ? 'responsive' : 'not responding (hung)');
   },
   wait_for_window: async (args) => {
     const match: { title?: string; className?: string; process?: number } = {};
