@@ -81,7 +81,7 @@ export function listFirewallRules(): FirewallRule[] {
       const enumerator = enumVariantOut.readBigUInt64LE(0);
       if (enumerator === 0n) return rules;
       try {
-        const variant = Buffer.alloc(16);
+        const variant = Buffer.alloc(24); // sizeof(VARIANT) on x64 — IEnumVARIANT::Next writes a full 24-byte VARIANT (8-byte header + 16-byte value union), not 16; mirrors com/reads.ts scratch24
         const fetched = Buffer.alloc(4);
         while (rules.length < MAX_RULES) {
           variant.fill(0);
