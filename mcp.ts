@@ -3598,6 +3598,10 @@ const HANDLERS: Record<string, ToolHandler> = {
       rules = rules.filter((rule) => rule.name.toLowerCase().includes(needle));
     }
     const total = rules.length;
+    if (total === 0) {
+      const applied = [args.direction === 'in' || args.direction === 'out' ? `direction=${args.direction}` : '', args.enabledOnly === true ? 'enabledOnly' : '', typeof args.match === 'string' ? `match="${args.match}"` : ''].filter((part) => part !== '');
+      return errorResult(`list_firewall_rules: no rules match the filters (${applied.join(', ')}) — relax {match}/{direction}/{enabledOnly}.`);
+    }
     const shown = rules.slice(0, typeof args.limit === 'number' && args.limit > 0 ? args.limit : 60);
     const lines = shown.map((rule) => `${rule.enabled ? '' : '[off] '}${rule.direction}/${rule.action} ${rule.protocol}${rule.localPorts ? ` :${rule.localPorts}` : ''} — ${rule.name}`);
     return textResult(`${total} firewall rules${total > shown.length ? ` (showing ${shown.length})` : ''}:\n${lines.join('\n')}`);
@@ -3608,7 +3612,8 @@ const HANDLERS: Record<string, ToolHandler> = {
     const name = requireString(args, 'name');
     if (args.confirm !== true) return errorResult('manage_task: refusing without {confirm:true} — a scheduled task is an autorun/persistence entry; pass confirm:true once you are sure of the name/action/xml');
     if (action === 'delete') return deleteTask(name) ? textResult(`deleted scheduled task "${name}"`) : errorResult(`manage_task: could not delete "${name}" — not found in the root folder, or access-denied (a protected/system task needs elevation; see current_user)`);
-    const xml = requireString(args, 'xml');
+    const xml = args.xml;
+    if (typeof xml !== 'string' || xml === '') return errorResult('manage_task: {action:"create"} needs {xml} — a Task Scheduler-schema task-definition XML string (the trigger(s)/action(s)/principal); generate it, then retry with confirm:true.');
     return createTask(name, xml) ? textResult(`created scheduled task "${name}"`) : errorResult(`manage_task: could not create "${name}" — check the {xml} is valid Task Scheduler XML and you have rights (HKLM/system-scope tasks need elevation; see current_user)`);
   },
   control_service: (args) => {
