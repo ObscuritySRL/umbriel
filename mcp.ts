@@ -1290,8 +1290,9 @@ function clickElement(element: Element, button: 'left' | 'right' | 'middle', dou
   if (!forceCursor) {
     if (button === 'left' && !doubleClick) {
       try {
-        element.invoke();
-        return 'invoked (cursor-free)';
+        // Disclose the foreground steal if the pattern act moves it (a classic own-HWND control routes through the MSAA
+        // bridge SetFocus) — parity with the invoke/toggle/select VERBS; byte-identical '(cursor-free)' when no steal.
+        return disclosingPatternAct('invoked (cursor-free)', () => element.invoke());
       } catch {
         // no Invoke pattern — try the other semantic activations a left-click maps to
       }
@@ -1302,14 +1303,12 @@ function clickElement(element: Element, button: 'left' | 'right' | 'middle', dou
       // is deliberately NOT in this chain: it can silently no-op, which would just trade one false success for another
       // and skip a coordinate post that would have worked on a legacy own-HWND control.)
       try {
-        element.toggle();
-        return `toggled (cursor-free, state ${element.toggleState})`;
+        return disclosingPatternAct('toggled (cursor-free', () => element.toggle(), () => `, state ${element.toggleState})`);
       } catch {
         // not a TogglePattern control
       }
       try {
-        element.select();
-        return 'selected (cursor-free)';
+        return disclosingPatternAct('selected (cursor-free)', () => element.select(), undefined, SELECT_STEAL_NOTE);
       } catch {
         // not a SelectionItemPattern control — fall back to the posted coordinate click
       }

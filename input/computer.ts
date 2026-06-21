@@ -8,6 +8,7 @@
 
 import { ownerHwnd, postClickAt, postClickToHwnd, postDoubleClickAt, postDragToHwnd, postTripleClickAt, scrollAt } from './coords';
 import { focused, fromPoint, type Window } from '../element/element';
+import { foregroundWindow } from '../element/window';
 import { clickAt, cursorPosition, doubleClickAt, dragStroke, dragTo, holdKey, middleClickAt, mouseDown, mouseUp, moveTo, postHoldKey, postKey, postText, rightClickAt, scrollWheel, sendKeys, type as typeText } from './input';
 
 export interface ComputerAction {
@@ -68,29 +69,39 @@ export function normalizeKey(combo: string): string {
     .join('+');
 }
 
+/** Run a UIA pattern act, then build its result message; if the act moved the foreground (a classic own-HWND control
+ *  routes through the MSAA bridge's SetFocus), append a terse steal note — the cursor-free disclosure parity the MCP
+ *  click path carries (mcp.ts disclosingPatternAct). The message is built AFTER the act so post-act reads (toggleState)
+ *  are current; byte-identical to the bare message when no steal occurs (a no-own-HWND WinUI control). */
+function withStealNote(act: () => void, message: () => string): string {
+  const before = foregroundWindow();
+  act();
+  const after = foregroundWindow();
+  const body = message();
+  return after === before ? body : `${body} — ⚠ raised/focused the window (the UIA pattern on a classic own-HWND control routes through the MSAA bridge SetFocus, stealing foreground + un-minimizing; before=0x${before.toString(16)} → after=0x${after.toString(16)}; no cursor-free path for this control type)`;
+}
+
 function semanticClick(x: number, y: number, cursorless: boolean): ComputerResult {
   let resolved: { role: string; name: string } | undefined;
   let owner = 0n;
   try {
     const element = fromPoint(x, y);
     try {
-      resolved = { role: element.controlTypeName, name: element.name };
+      const target = { role: element.controlTypeName, name: element.name };
+      resolved = target;
       try {
-        element.invoke();
-        return { ok: true, semantic: resolved, output: `invoked ${resolved.role} ${JSON.stringify(resolved.name)} (cursor-free)` };
+        return { ok: true, semantic: target, output: withStealNote(() => element.invoke(), () => `invoked ${target.role} ${JSON.stringify(target.name)} (cursor-free)`) };
       } catch {
         // no Invoke — try the semantic activations a left-click maps to (cursor-free + verifiable on a no-own-HWND
         // WinUI control, exactly where a posted COORDINATE click is silently dropped — mirrors the MCP click path)
       }
       try {
-        element.toggle();
-        return { ok: true, semantic: resolved, output: `toggled ${resolved.role} ${JSON.stringify(resolved.name)} (cursor-free, state ${element.toggleState})` };
+        return { ok: true, semantic: target, output: withStealNote(() => element.toggle(), () => `toggled ${target.role} ${JSON.stringify(target.name)} (cursor-free, state ${element.toggleState})`) };
       } catch {
         // not a TogglePattern control
       }
       try {
-        element.select();
-        return { ok: true, semantic: resolved, output: `selected ${resolved.role} ${JSON.stringify(resolved.name)} (cursor-free)` };
+        return { ok: true, semantic: target, output: withStealNote(() => element.select(), () => `selected ${target.role} ${JSON.stringify(target.name)} (cursor-free)`) };
       } catch {
         // not a SelectionItemPattern control
       }
