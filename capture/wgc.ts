@@ -157,24 +157,50 @@ function ensureBundle(): DeviceBundle {
   if (bundle !== null) return bundle;
   initialize(); // ensure COM is initialized (umbriel's STA is fine — WGC activation is apartment-agnostic)
   roInitialized = Combase.RoInitialize(1) === S_OK; // RO_INIT_MULTITHREADED; RPC_E_CHANGED_MODE under the existing STA is expected (then no RoUninitialize)
-  const device = createDevice(1 /* HARDWARE */) ?? createDevice(5 /* WARP */);
-  if (device === null) throw new Error('WGC: D3D11CreateDevice failed (HARDWARE and WARP)');
-  const dxgiDevice = queryInterface(device.device, IID_IDXGIDevice);
-  const inspectableOut = Buffer.alloc(8);
-  if (D3D11Interop.CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice, inspectableOut.ptr!) !== S_OK) throw new Error('WGC: CreateDirect3D11DeviceFromDXGIDevice failed');
-  const inspectable = inspectableOut.readBigUInt64LE(0);
-  const winrtDevice = queryInterface(inspectable, IID_IDirect3DDevice);
-  release(inspectable);
-  release(dxgiDevice);
-  bundle = {
-    device: device.device,
-    context: device.context,
-    winrtDevice,
-    interop: activationFactory(RC_GraphicsCaptureItem, IID_IGraphicsCaptureItemInterop),
-    framePoolStatics: activationFactory(RC_FramePool, IID_IDirect3D11CaptureFramePoolStatics2),
-  };
-  setWgcBundleDisposer(dispose); // let automation.uninitialize() free this bundle before CoUninitialize (no static automation→wgc dep)
-  return bundle;
+  // Acquire incrementally into mutable locals so a partial-init throw (DXGI bridge / RoGetActivationFactory) releases
+  // EVERYTHING taken so far — including the heavyweight D3D11 device + context, which dispose() can't reclaim because
+  // `bundle` is still null — instead of leaking it on every wgcAvailable()/capture retry. release() is null-guarded;
+  // the apartment ref is paired here too (dispose() early-returns on a null bundle, so it can't). Happy path unchanged.
+  let device: { device: bigint; context: bigint } | null = null;
+  let dxgiDevice = 0n;
+  let inspectable = 0n;
+  let winrtDevice = 0n;
+  let interop = 0n;
+  let framePoolStatics = 0n;
+  try {
+    device = createDevice(1 /* HARDWARE */) ?? createDevice(5 /* WARP */);
+    if (device === null) throw new Error('WGC: D3D11CreateDevice failed (HARDWARE and WARP)');
+    dxgiDevice = queryInterface(device.device, IID_IDXGIDevice);
+    const inspectableOut = Buffer.alloc(8);
+    if (D3D11Interop.CreateDirect3D11DeviceFromDXGIDevice(dxgiDevice, inspectableOut.ptr!) !== S_OK) throw new Error('WGC: CreateDirect3D11DeviceFromDXGIDevice failed');
+    inspectable = inspectableOut.readBigUInt64LE(0);
+    winrtDevice = queryInterface(inspectable, IID_IDirect3DDevice);
+    release(inspectable);
+    inspectable = 0n;
+    release(dxgiDevice);
+    dxgiDevice = 0n;
+    interop = activationFactory(RC_GraphicsCaptureItem, IID_IGraphicsCaptureItemInterop);
+    framePoolStatics = activationFactory(RC_FramePool, IID_IDirect3D11CaptureFramePoolStatics2);
+    const built: DeviceBundle = { device: device.device, context: device.context, winrtDevice, interop, framePoolStatics };
+    bundle = built;
+    setWgcBundleDisposer(dispose); // let automation.uninitialize() free this bundle before CoUninitialize (no static automation→wgc dep)
+    return built;
+  } catch (error) {
+    release(framePoolStatics);
+    release(interop);
+    release(winrtDevice);
+    release(inspectable);
+    release(dxgiDevice);
+    if (device !== null) {
+      release(device.context); // the immediate context holds a device ref — release it before the device
+      release(device.device);
+    }
+    if (roInitialized) {
+      Combase.RoUninitialize(); // pair the RoInitialize this call made — dispose() can't (bundle stayed null)
+      roInitialized = false;
+    }
+    throw error;
+  }
 }
 
 /**
