@@ -424,11 +424,17 @@ export function postText(hWnd: bigint, text: string): boolean {
   return ok;
 }
 
-/** Hold a key down for `durationMs`, then release (the Anthropic `hold_key` action). */
+/** Hold a key — or a chord like "Control+Shift+A" — down for `durationMs`, then release (the Anthropic `hold_key`
+ *  action). Every part is validated before any press, so a bad name (incl. empty) throws WITHOUT leaving a key stuck. */
 export async function holdKey(name: string, durationMs: number): Promise<void> {
-  keyDown(name);
-  await Bun.sleep(durationMs);
-  keyUp(name);
+  const parts = name.split('+');
+  for (const part of parts) virtualKeyCode(part); // validate all (throws on a bad/empty name) before pressing any — no stuck key
+  for (const part of parts) keyDown(part);
+  try {
+    await Bun.sleep(durationMs);
+  } finally {
+    for (let index = parts.length - 1; index >= 0; index -= 1) keyUp(parts[index]!); // release in reverse press order
+  }
 }
 
 /** Press the left mouse button down at a screen point (pair with `mouseUp`; the drag primitive). */

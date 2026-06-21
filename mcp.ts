@@ -3266,7 +3266,8 @@ const HANDLERS: Record<string, ToolHandler> = {
       // Own-HWND control → hold it cursor-free (posted WM_KEYDOWN autorepeat); no focus, background/locked OK.
       const element = resolveRef(args.ref);
       const handle = element.nativeWindowHandle;
-      if (handle !== 0n) {
+      if (handle !== 0n && !key.includes('+')) {
+        // a chord has no single-key posted-hold path (postHoldKey is one virtual key) → fall through to the SendInput holdKey, which now holds the whole chord
         await postHoldKey(handle, key, durationMs);
         return withSnapshot(`held ${keyShown} on ${named(element)} for ${durationMs}ms cursor-free`);
       }
