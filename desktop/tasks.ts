@@ -154,15 +154,10 @@ function walkFolder(service: bigint, folderPath: string, depth: number, tasks: S
  * created, run, or modified. Hidden tasks are included (TASK_ENUM_HIDDEN) since they are a persistence vector.
  */
 export function listScheduledTasks(): ScheduledTask[] {
-  Combase.CoInitializeEx(null, COINIT_APARTMENTTHREADED); // idempotent (S_FALSE if already initialized on this thread)
-  const out = Buffer.alloc(8);
-  if (Combase.CoCreateInstance(guid(CLSID_TaskScheduler).ptr!, 0n, CLSCTX_INPROC_SERVER, guid(IID_ITaskService).ptr!, out.ptr!) !== S_OK) return [];
-  const service = out.readBigUInt64LE(0);
+  const service = connectTaskService();
   if (service === 0n) return [];
   const tasks: ScheduledTask[] = [];
   try {
-    const emptyVariant = Buffer.alloc(16); // 4× VT_EMPTY → Connect to the local machine as the current user
-    if (vcall(service, TASK_SLOT.ITaskService_Connect, [FFIType.ptr, FFIType.ptr, FFIType.ptr, FFIType.ptr], [emptyVariant.ptr!, emptyVariant.ptr!, emptyVariant.ptr!, emptyVariant.ptr!]) !== S_OK) return tasks;
     walkFolder(service, '\\', 0, tasks);
   } finally {
     comRelease(service);
@@ -171,7 +166,7 @@ export function listScheduledTasks(): ScheduledTask[] {
 }
 
 /** CoCreateInstance(TaskScheduler) + Connect to the local machine as the current user. Returns the ITaskService pointer
- *  (caller comReleases) or 0n. Shared by the create/delete writers (listScheduledTasks inlines the same sequence). */
+ *  (caller comReleases) or 0n. Shared by listScheduledTasks and the create/delete writers. */
 function connectTaskService(): bigint {
   Combase.CoInitializeEx(null, COINIT_APARTMENTTHREADED); // idempotent (S_FALSE if already initialized on this thread)
   const out = Buffer.alloc(8);
