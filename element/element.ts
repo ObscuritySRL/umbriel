@@ -916,8 +916,10 @@ export class Element {
    *  FlaUI `comboBox.Select(value)`) — pure composition of shipped patterns, no new FFI. Expands this element first if
    *  it is an ExpandCollapse combo (so the popup list realizes), reveal()s the matching ListItem/TreeItem/DataItem by
    *  Name (scroll-revealing a virtualized list), then selects it (SelectionItem, falling back to Invoke), and collapses
-   *  the combo again. Cursor-free, no focus, works on a background/occluded window. Returns true on a pick, false if no
-   *  item matched. `ignoreCase` matches the text case-insensitively (anchored, whole-name). */
+   *  the combo again. Cursor-free on a WinUI/WPF/Chromium item; a classic MSAA-bridged own-HWND item routes its
+   *  SelectionItem.Select/Invoke through the provider bridge's SetFocus, which moves foreground to that control's window
+   *  (the MCP select_option handler discloses this). Returns true on a pick, false if no item matched. `ignoreCase`
+   *  matches the text case-insensitively (anchored, whole-name). */
   selectOption(text: string, options: { ignoreCase?: boolean } = {}): boolean {
     const name = options.ignoreCase ? new RegExp(`^${text.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') : text;
     const wasCollapsed = this.expandCollapseState === ExpandCollapseState.Collapsed;

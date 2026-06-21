@@ -1654,7 +1654,7 @@ const TOOLS: McpTool[] = [
     name: 'select_option',
     category: 'input',
     description:
-      'Pick a value from a combobox / dropdown / list / tree by its visible TEXT in ONE call (Playwright selectOption({label}), FlaUI comboBox.Select(value)) — cursor-free, no focus. Target the COMBO/LIST ref (not an item): it expands if needed, scroll-reveals the matching item even when virtualized, selects it (SelectionItem, Invoke fallback), then collapses. ignoreCase matches the text case-insensitively. Errors if no item matches.',
+      'Pick a value from a combobox / dropdown / list / tree by its visible TEXT in ONE call (Playwright selectOption({label}), FlaUI comboBox.Select(value)) — cursor-free on WinUI/WPF/Chromium items; a classic MSAA-bridged own-HWND item routes through the provider bridge and moves foreground to that control’s window (disclosed in the result). Target the COMBO/LIST ref (not an item): it expands if needed, scroll-reveals the matching item even when virtualized, selects it (SelectionItem, Invoke fallback), then collapses. ignoreCase matches the text case-insensitively. Errors if no item matches.',
     inputSchema: {
       type: 'object',
       properties: { element: { type: 'string', description: ELEMENT_DESC }, ref: { type: 'string', description: REF_DESC }, text: { type: 'string', description: 'The visible item text to pick.' }, ignoreCase: { type: 'boolean' } },
@@ -2602,9 +2602,11 @@ const HANDLERS: Record<string, ToolHandler> = {
     const element = resolveRef(requireString(args, 'ref'));
     const text = requireString(args, 'text');
     const target = named(element);
+    const before = foregroundWindow();
     const picked = patternAction('select_option', () => element.selectOption(text, { ignoreCase: args.ignoreCase === true }));
+    const after = foregroundWindow(); // selectOption's internal SelectionItem.Select/Invoke can steal foreground on a classic own-HWND item — disclose it like every other select path
     return picked
-      ? withSettledSnapshot(`selected ${JSON.stringify(text)} in ${target}`, current?.marks.length ?? 0)
+      ? withSettledSnapshot(`selected ${JSON.stringify(text)} in ${target}${after === before ? '' : SELECT_STEAL_NOTE(before, after)}`, current?.marks.length ?? 0)
       : errorResult(`no item named ${JSON.stringify(text)} under ${target} — expand it and desktop_snapshot to see the options, mind case (ignoreCase:true), or it may be virtualized (the scan covers ~80 pages)`);
   },
   find_text: (args) => {
