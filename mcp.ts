@@ -27,6 +27,8 @@ import {
   readServiceConfig,
   createTask,
   deleteTask,
+  listAdapters,
+  listConnections,
   listFirewallRules,
   listScheduledTasks,
   listServices,
@@ -2166,6 +2168,18 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { direction: { type: 'string', enum: ['in', 'out'], description: 'Only inbound or only outbound rules' }, enabledOnly: { type: 'boolean', description: 'Only enabled rules' }, match: { type: 'string', description: 'Only rules whose name contains this (case-insensitive)' }, limit: { type: 'number', description: 'Max rules to return (default 60)' } } },
   },
   {
+    name: 'list_adapters',
+    category: 'read',
+    description: 'List network adapters natively (no ipconfig / Get-NetAdapter shell) — each NIC\'s friendly name, type (ethernet/wifi/loopback/tunnel/…), up/down status, MAC, MTU, and all assigned IPv4/IPv6 addresses. A real diagnostic read of the machine\'s network configuration.',
+    inputSchema: { type: 'object', properties: {} },
+  },
+  {
+    name: 'list_connections',
+    category: 'read',
+    description: 'List active TCP connections + listeners (and UDP endpoints) natively (no netstat -ano / Get-NetTCPConnection shell) — each row\'s protocol, state (LISTEN/ESTABLISHED/…), local and remote address:port, and the OWNING pid. Tie a pid to its process with process_info. IPv4. Optional {udp:false} to skip UDP, {state} (e.g. "LISTEN") and {pid} filters; {limit} caps output (default 200).',
+    inputSchema: { type: 'object', properties: { udp: { type: 'boolean', description: 'Include UDP endpoints (default true)' }, state: { type: 'string', description: 'Only rows in this TCP state (e.g. LISTEN, ESTABLISHED)' }, pid: { type: 'number', description: 'Only rows owned by this pid' }, limit: { type: 'number', description: 'Max rows (default 200)' } } },
+  },
+  {
     name: 'manage_task',
     category: 'os',
     description:
@@ -3622,6 +3636,24 @@ const HANDLERS: Record<string, ToolHandler> = {
     const shown = rules.slice(0, typeof args.limit === 'number' && args.limit > 0 ? args.limit : 60);
     const lines = shown.map((rule) => `${rule.enabled ? '' : '[off] '}${rule.direction}/${rule.action} ${rule.protocol}${rule.localPorts ? ` :${rule.localPorts}` : ''} — ${rule.name}`);
     return textResult(`${total} firewall rules${total > shown.length ? ` (showing ${shown.length})` : ''}:\n${lines.join('\n')}`);
+  },
+  list_adapters: () => {
+    const adapters = listAdapters();
+    if (adapters.length === 0) return errorResult('list_adapters: could not enumerate network adapters (the iphlpapi call failed)');
+    return textResult(adapters.map((adapter) => `${adapter.name} [${adapter.type}, ${adapter.status}] mac ${adapter.mac || '—'} mtu ${adapter.mtu}\n  ${adapter.addresses.length > 0 ? adapter.addresses.join(', ') : '(no IP)'}`).join('\n'));
+  },
+  list_connections: (args) => {
+    let rows = listConnections(args.udp !== false);
+    if (typeof args.state === 'string') {
+      const want = args.state.toUpperCase();
+      rows = rows.filter((row) => row.state === want);
+    }
+    if (typeof args.pid === 'number') rows = rows.filter((row) => row.pid === args.pid);
+    const total = rows.length;
+    if (total === 0) return errorResult(`list_connections: no connections match${typeof args.state === 'string' ? ` (state=${args.state})` : ''}${typeof args.pid === 'number' ? ` (pid=${args.pid})` : ''}${typeof args.state !== 'string' && typeof args.pid !== 'number' ? ' (the table is empty or enumeration failed)' : ' — relax {state}/{pid}/{udp}'}.`);
+    const shown = rows.slice(0, typeof args.limit === 'number' && args.limit > 0 ? args.limit : 200);
+    const lines = shown.map((row) => `${row.protocol.toUpperCase().padEnd(4)} ${(row.state || '-').padEnd(11)} ${row.localAddress}:${row.localPort}${row.remoteAddress ? ` -> ${row.remoteAddress}:${row.remotePort}` : ''} pid ${row.pid}`);
+    return textResult(`${total} connections${total > shown.length ? ` (showing ${shown.length})` : ''}:\n${lines.join('\n')}`);
   },
   manage_task: (args) => {
     const action = args.action;
