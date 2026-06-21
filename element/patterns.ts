@@ -545,18 +545,20 @@ export function readTable(ptr: bigint, maxRows = 100, startRow = 0): TableData |
         if (vcall(grid, SLOT.GetItem, [FFIType.i32, FFIType.i32, FFIType.ptr], [row, column, cellOut.ptr!]) !== S_OK) continue;
         const cell = cellOut.readBigUInt64LE(0);
         if (cell === 0n) continue;
-        if (getPropertyValue(cell, PropertyId.IsPassword) === true) {
-          cells[column] = '(password)'; // never surface a secret cell's value (matches snapshot/inspect_element/read/copy)
-          comRelease(cell);
-          continue;
+        try {
+          if (getPropertyValue(cell, PropertyId.IsPassword) === true) {
+            cells[column] = '(password)'; // never surface a secret cell's value (matches snapshot/inspect_element/read/copy)
+            continue; // the finally below still releases `cell` before the loop advances
+          }
+          const value = getPropertyValue(cell, PropertyId.ValueValue); // the ValuePattern value is the real datum wherever it exists — Explorer Details ("Adobe"), Excel/spreadsheet cells (Name is just the "B2" address) — so it takes precedence over Name
+          if (typeof value === 'string' && value.length > 0) cells[column] = value;
+          else {
+            const name = getBstr(cell, SLOT.get_CurrentName); // no ValuePattern → the datum is in Name (WinForms DataGridView), unless Name merely echoes the column header; '' when both are empty (a genuinely blank cell — never echo the header label back)
+            cells[column] = name.length > 0 && name !== headers[column] ? name : '';
+          }
+        } finally {
+          comRelease(cell); // release on EVERY exit — incl. a torn-down-proxy vcall throw mid-cell on a virtualizing grid (was a bare comRelease outside try → leaked the cell proxy on the throw path)
         }
-        const value = getPropertyValue(cell, PropertyId.ValueValue); // the ValuePattern value is the real datum wherever it exists — Explorer Details ("Adobe"), Excel/spreadsheet cells (Name is just the "B2" address) — so it takes precedence over Name
-        if (typeof value === 'string' && value.length > 0) cells[column] = value;
-        else {
-          const name = getBstr(cell, SLOT.get_CurrentName); // no ValuePattern → the datum is in Name (WinForms DataGridView), unless Name merely echoes the column header; '' when both are empty (a genuinely blank cell — never echo the header label back)
-          cells[column] = name.length > 0 && name !== headers[column] ? name : '';
-        }
-        comRelease(cell);
       }
       rows.push(cells);
     }

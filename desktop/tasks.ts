@@ -95,16 +95,19 @@ function collectTasks(folder: bigint, folderPath: string, tasks: ScheduledTask[]
       const taskOut = Buffer.alloc(8);
       if (vcall(collection, TASK_SLOT.Collection_get_Item, [FFIType.ptr, FFIType.ptr], [variant.ptr!, taskOut.ptr!]) !== S_OK) continue;
       const task = taskOut.readBigUInt64LE(0);
-      tasks.push({
-        path: folderPath,
-        name: getBstr(task, TASK_SLOT.IRegisteredTask_get_Name),
-        state: TASK_STATES[getLong(task, TASK_SLOT.IRegisteredTask_get_State)] ?? 'unknown',
-        enabled: getLong(task, TASK_SLOT.IRegisteredTask_get_Enabled) !== 0, // VARIANT_BOOL: -1 true / 0 false
-        lastRun: getDateField(task, TASK_SLOT.IRegisteredTask_get_LastRunTime),
-        nextRun: getDateField(task, TASK_SLOT.IRegisteredTask_get_NextRunTime),
-        lastResult: `0x${(getLong(task, TASK_SLOT.IRegisteredTask_get_LastTaskResult) >>> 0).toString(16)}`,
-      });
-      comRelease(task);
+      try {
+        tasks.push({
+          path: folderPath,
+          name: getBstr(task, TASK_SLOT.IRegisteredTask_get_Name),
+          state: TASK_STATES[getLong(task, TASK_SLOT.IRegisteredTask_get_State)] ?? 'unknown',
+          enabled: getLong(task, TASK_SLOT.IRegisteredTask_get_Enabled) !== 0, // VARIANT_BOOL: -1 true / 0 false
+          lastRun: getDateField(task, TASK_SLOT.IRegisteredTask_get_LastRunTime),
+          nextRun: getDateField(task, TASK_SLOT.IRegisteredTask_get_NextRunTime),
+          lastResult: `0x${(getLong(task, TASK_SLOT.IRegisteredTask_get_LastTaskResult) >>> 0).toString(16)}`,
+        });
+      } finally {
+        comRelease(task); // release on EVERY exit — incl. a field-read vcall throw if the task is deleted mid-enumeration (was a bare comRelease outside try → leaked the IRegisteredTask proxy on the throw path)
+      }
     }
   } finally {
     comRelease(collection);

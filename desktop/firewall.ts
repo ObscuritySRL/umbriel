@@ -89,18 +89,21 @@ export function listFirewallRules(): FirewallRule[] {
           if (variant.readUInt16LE(0) !== VT_DISPATCH) continue;
           const rule = variant.readBigUInt64LE(8);
           if (rule === 0n) continue;
-          const protocol = getLong(rule, FIREWALL_SLOT.INetFwRule_get_Protocol);
-          const direction = getLong(rule, FIREWALL_SLOT.INetFwRule_get_Direction);
-          const action = getLong(rule, FIREWALL_SLOT.INetFwRule_get_Action);
-          rules.push({
-            name: getBstr(rule, FIREWALL_SLOT.INetFwRule_get_Name),
-            direction: DIRECTIONS[direction] ?? `dir-${direction}`,
-            action: ACTIONS[action] ?? `action-${action}`,
-            enabled: getVariantBool(rule, FIREWALL_SLOT.INetFwRule_get_Enabled),
-            protocol: PROTOCOLS[protocol] ?? `proto-${protocol}`,
-            localPorts: getBstr(rule, FIREWALL_SLOT.INetFwRule_get_LocalPorts),
-          });
-          comRelease(rule);
+          try {
+            const protocol = getLong(rule, FIREWALL_SLOT.INetFwRule_get_Protocol);
+            const direction = getLong(rule, FIREWALL_SLOT.INetFwRule_get_Direction);
+            const action = getLong(rule, FIREWALL_SLOT.INetFwRule_get_Action);
+            rules.push({
+              name: getBstr(rule, FIREWALL_SLOT.INetFwRule_get_Name),
+              direction: DIRECTIONS[direction] ?? `dir-${direction}`,
+              action: ACTIONS[action] ?? `action-${action}`,
+              enabled: getVariantBool(rule, FIREWALL_SLOT.INetFwRule_get_Enabled),
+              protocol: PROTOCOLS[protocol] ?? `proto-${protocol}`,
+              localPorts: getBstr(rule, FIREWALL_SLOT.INetFwRule_get_LocalPorts),
+            });
+          } finally {
+            comRelease(rule); // release on EVERY exit — incl. a property-read vcall throw if the rule is deleted mid-walk (was a bare comRelease outside try → leaked the INetFwRule dispatch proxy on the throw path)
+          }
         }
       } finally {
         comRelease(enumerator);
