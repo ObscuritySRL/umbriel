@@ -11,6 +11,8 @@
 
 import Advapi32 from '@bun-win32/advapi32';
 
+import { readPackedWide } from '../com/reads';
+
 const SC_MANAGER_CONNECT = 0x0001;
 const SC_MANAGER_ENUMERATE_SERVICE = 0x0004;
 const SERVICE_QUERY_STATUS = 0x0004;
@@ -31,15 +33,6 @@ export interface ServiceEntry {
   name: string;
   displayName: string;
   state: string;
-}
-
-/** Read a NUL-terminated wide string that the API packed INSIDE `buffer`, via its absolute `pointer` and the buffer's
- *  `base` — by offset, so the read stays within the buffer (never an out-of-bounds absolute read). */
-function readPackedWide(buffer: Buffer, base: bigint, pointer: bigint): string {
-  if (pointer === 0n) return '';
-  const offset = Number(pointer - base);
-  if (offset < 0 || offset >= buffer.length) return '';
-  return buffer.toString('utf16le', offset, Math.min(offset + 2048, buffer.length)).split('\0')[0] ?? '';
 }
 
 /** The service's current state, plus its owning pid when running, via QueryServiceStatusEx (SERVICE_STATUS_PROCESS). */
@@ -91,8 +84,8 @@ export function listServices(): ServiceEntry[] {
       const record = index * ENUM_STATUS_STRIDE;
       const state = buffer.readUInt32LE(record + 20); // SERVICE_STATUS.dwCurrentState (@16 + 4)
       services.push({
-        name: readPackedWide(buffer, base, buffer.readBigUInt64LE(record)),
-        displayName: readPackedWide(buffer, base, buffer.readBigUInt64LE(record + 8)),
+        name: readPackedWide(buffer, base, buffer.readBigUInt64LE(record), 2048),
+        displayName: readPackedWide(buffer, base, buffer.readBigUInt64LE(record + 8), 2048),
         state: SERVICE_STATES[state] ?? `state-${state}`,
       });
     }
@@ -171,8 +164,8 @@ export function readServiceConfig(name: string): ServiceConfig | null {
       const startType = buffer.readUInt32LE(4); // QUERY_SERVICE_CONFIGW (x64): dwStartType@4, lpBinaryPathName@16, lpServiceStartName@48
       return {
         startType: SERVICE_START_TYPES[startType] ?? `start-${startType}`,
-        binaryPath: readPackedWide(buffer, base, buffer.readBigUInt64LE(16)),
-        account: readPackedWide(buffer, base, buffer.readBigUInt64LE(48)),
+        binaryPath: readPackedWide(buffer, base, buffer.readBigUInt64LE(16), 2048),
+        account: readPackedWide(buffer, base, buffer.readBigUInt64LE(48), 2048),
       };
     } finally {
       Advapi32.CloseServiceHandle(service);

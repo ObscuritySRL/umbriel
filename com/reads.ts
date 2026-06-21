@@ -32,6 +32,16 @@ export function decodeBstr(bstr: bigint): string {
   return text;
 }
 
+/** Read a NUL-terminated wide string a Win32 API packed INSIDE `buffer`, via its absolute `pointer` and the buffer's
+ *  `base` — by offset (pointer − base), so the read stays in-bounds (a stray pointer → '' instead of an out-of-bounds
+ *  absolute read). `maxBytes` caps the decode window before the NUL split. Pure buffer read — no vtable, no COM. */
+export function readPackedWide(buffer: Buffer, base: bigint, pointer: bigint, maxBytes: number): string {
+  if (pointer === 0n) return '';
+  const offset = Number(pointer - base);
+  if (offset < 0 || offset >= buffer.length) return '';
+  return buffer.toString('utf16le', offset, Math.min(offset + maxBytes, buffer.length)).split('\0')[0] ?? '';
+}
+
 /** Read a `[propget] BSTR*` accessor, bulk-copying the UTF-16 region before freeing the BSTR. */
 export function getBstr(ptr: bigint, slot: number): string {
   if (vcall(ptr, slot, [FFIType.ptr], [scratch8.ptr!]) !== S_OK) return '';

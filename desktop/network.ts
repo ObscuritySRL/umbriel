@@ -7,11 +7,13 @@
 // Address/port formatting is pure TS (no ws2_32): an IPv4 in_addr is already in display order (print the 4 bytes
 // a.b.c.d); a port is network-byte-order in the low 16 bits (ntohs = read the two bytes big-endian). The adapter
 // strings (FriendlyName/Description) are pointers INTO the returned buffer, decoded by offset (pointer − base) with a
-// range guard so a stray pointer reads '' instead of out of bounds — the desktop/services.ts readPackedWide idiom.
+// range guard so a stray pointer reads '' instead of out of bounds — via the shared com/reads.ts readPackedWide.
 
 import type { Pointer } from 'bun:ffi';
 
 import Iphlpapi from '@bun-win32/iphlpapi';
+
+import { readPackedWide } from '../com/reads';
 
 const AF_UNSPEC = 0;
 const AF_INET = 2;
@@ -46,15 +48,6 @@ export interface Connection {
   remoteAddress: string; // '' for a listener / UDP
   remotePort: number; // 0 for a listener / UDP
   pid: number; // the owning process id
-}
-
-/** A NUL-terminated wide string the API packed INSIDE `buffer`, read via its absolute `pointer` and the buffer `base`
- *  by offset so the read stays in-bounds (a stray pointer → '' rather than an out-of-bounds absolute read). */
-function readPackedWide(buffer: Buffer, base: bigint, pointer: bigint): string {
-  if (pointer === 0n) return '';
-  const offset = Number(pointer - base);
-  if (offset < 0 || offset >= buffer.length) return '';
-  return buffer.toString('utf16le', offset, Math.min(offset + 1024, buffer.length)).split('\0')[0] ?? '';
 }
 
 /** Format an IPv6 address (16 bytes at `offset` in `buffer`) with the standard longest-zero-run "::" compression. */
@@ -127,8 +120,8 @@ export function listAdapters(): AdapterInfo[] {
       const macBytes: string[] = [];
       for (let b = 0; b < macLength && b < 8; b += 1) macBytes.push(buffer[o + 80 + b].toString(16).padStart(2, '0'));
       adapters.push({
-        name: readPackedWide(buffer, base, buffer.readBigUInt64LE(o + 72)), // FriendlyName
-        description: readPackedWide(buffer, base, buffer.readBigUInt64LE(o + 64)), // Description
+        name: readPackedWide(buffer, base, buffer.readBigUInt64LE(o + 72), 1024), // FriendlyName
+        description: readPackedWide(buffer, base, buffer.readBigUInt64LE(o + 64), 1024), // Description
         type: IF_TYPES[buffer.readUInt32LE(o + 100)] ?? `type-${buffer.readUInt32LE(o + 100)}`,
         status: OPER_STATUS[buffer.readUInt32LE(o + 104)] ?? `status-${buffer.readUInt32LE(o + 104)}`,
         mac: macBytes.join(':'),
