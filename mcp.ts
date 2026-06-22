@@ -2961,7 +2961,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const hit = words.find((word) => word.text.toLowerCase().includes(want)) ?? result.lines.find((line) => line.text.toLowerCase().includes(want)) ?? null;
     if (hit === null) {
       const nearest = words
-        .map((word) => word.text)
+        .map((word) => redactSecrets(word.text)) // same OCR pixels the `ocr` tool redacts — mask a key/token before it reaches the model (bounds, not text, drive the click)
         .filter((text) => text.trim().length > 0)
         .slice(0, 8);
       throw new Error(`click_text: no on-screen text matched ${JSON.stringify(args.text)}${nearest.length > 0 ? ` — nearest: ${nearest.map((text) => JSON.stringify(text)).join(', ')}` : ''}`);
@@ -2971,12 +2971,12 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (args.cursor === true) {
       if (cursorDenied) return errorResult('click_text {cursor:true} moves the real cursor — disabled by UMBRIEL_CURSOR=never. Omit cursor for a posted cursor-free click.');
       clickAt(centerX, centerY);
-      return textResult(`clicked text ${JSON.stringify(hit.text)} (real cursor) at ${centerX},${centerY}`);
+      return textResult(`clicked text ${JSON.stringify(redactSecrets(hit.text))} (real cursor) at ${centerX},${centerY}`);
     }
-    if (postClickAt(centerX, centerY, 'left')) return textResult(`clicked text ${JSON.stringify(hit.text)} at ${centerX},${centerY} (cursor-free)`);
+    if (postClickAt(centerX, centerY, 'left')) return textResult(`clicked text ${JSON.stringify(redactSecrets(hit.text))} at ${centerX},${centerY} (cursor-free)`);
     if (cursorDenied) return errorResult(`the posted click did not reach the text's pixel at ${centerX},${centerY} and the real-cursor fallback is disabled by UMBRIEL_CURSOR=never — target a control by ref (click/invoke) instead`);
     clickAt(centerX, centerY);
-    return textResult(`clicked text ${JSON.stringify(hit.text)} at ${centerX},${centerY} (real cursor fallback)`);
+    return textResult(`clicked text ${JSON.stringify(redactSecrets(hit.text))} at ${centerX},${centerY} (real cursor fallback)`);
   },
   screenshot: async () => {
     const window = requireAttached();
