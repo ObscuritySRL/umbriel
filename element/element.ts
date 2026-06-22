@@ -173,10 +173,12 @@ function findFirstMatch(scopeElement: bigint, compiled: CompiledCondition, selec
   // each candidate from cache (zero further round-trips) instead of 4 live reads per candidate. The CacheRequest
   // is a client-side object (in-proc to build/release); the returned Elements are Full-mode (actionable).
   const request = createCacheRequest(MATCHER_PROPERTIES, TreeScope.TreeScope_Element, AutomationElementMode.Full);
+  let pointers: bigint[] = [];
+  let index = 0;
   try {
     const subtreeFilter = needsSubtreeFilter(selector);
-    const pointers = findAllCachedPointers(scopeElement, scope, compiled.condition, request.ptr);
-    for (let index = 0; index < pointers.length; index += 1) {
+    pointers = findAllCachedPointers(scopeElement, scope, compiled.condition, request.ptr);
+    for (; index < pointers.length; index += 1) {
       const pointer = pointers[index]!;
       if (matches(readCachedProperties(pointer, selector), selector) && (!subtreeFilter || subtreeMatches(pointer, selector))) {
         for (let rest = index + 1; rest < pointers.length; rest += 1) comRelease(pointers[rest]!);
@@ -185,6 +187,13 @@ function findFirstMatch(scopeElement: bigint, compiled: CompiledCondition, selec
       comRelease(pointer);
     }
     return null;
+  } catch (error) {
+    // A per-candidate cached read (readCachedProperties / subtreeMatches) vcall-throws the use-after-free guard when a
+    // candidate proxy was torn down between FindAllBuildCache and this read (a fast-changing tree). The success/no-match
+    // paths release as they go; on this throw the current proxy + the un-walked remainder are still owned — free them so
+    // the in-flight matches don't leak (the finally below releases only the cache request). (Sibling of fix ae54a76.)
+    for (let rest = index; rest < pointers.length; rest += 1) comRelease(pointers[rest]!);
+    throw error;
   } finally {
     request.release();
   }
