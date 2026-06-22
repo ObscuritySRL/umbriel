@@ -10,8 +10,18 @@
  * bun test is broken repo-wide — runnable harness:
  * Run: bun run example/mcp-snapshot-economy.integration.test.ts
  */
-const calc = Bun.spawn(['cmd', '/c', 'start', 'calc'], { stdout: 'ignore', stderr: 'ignore' });
-await Bun.sleep(1500);
+import { closeWindow, umbriel } from 'umbriel';
+
+// Launch + attach via umbriel's OWN tools (NOT a `cmd /c start calc` shell-out) and attach by hWnd (NOT by title):
+// a fresh foreground launch can't be a suspended/backgrounded UWP window whose tree reads empty, and an exact hWnd
+// can't mis-match — the two flake sources of the old shell-launch + title-attach path.
+umbriel.initialize();
+const calc = await umbriel.launch(['calc.exe'], { title: 'Calculator' }).catch(() => null);
+if (calc === null) {
+  console.log('skip: Calculator did not launch');
+  process.exit(0);
+}
+await Bun.sleep(1200); // cold UWP render
 
 const server = Bun.spawn(['bun', `${import.meta.dir}/../mcp.ts`], { stdin: 'pipe', stdout: 'pipe', stderr: 'inherit', env: { ...Bun.env, UMBRIEL_PROFILE: 'safe' } });
 const decoder = new TextDecoder();
@@ -50,7 +60,9 @@ function assert(condition: boolean, message: string): void {
   if (!condition) {
     console.error(`FAIL: ${message}`);
     server.kill();
-    calc.kill();
+    closeWindow(calc!.hWnd); // non-null: the early `if (calc === null) process.exit(0)` guard guarantees it here
+    calc!.dispose();
+    umbriel.uninitialize();
     process.exit(1);
   }
   console.log(`  ok: ${message}`);
@@ -58,7 +70,7 @@ function assert(condition: boolean, message: string): void {
 
 await call('initialize', { protocolVersion: '2025-11-25', capabilities: {}, clientInfo: { name: 'economy-test', version: '1' } });
 
-const attached = await call('tools/call', { name: 'attach', arguments: { title: 'Calculator' } });
+const attached = await call('tools/call', { name: 'attach', arguments: { hWnd: `0x${calc.hWnd.toString(16)}` } });
 assert(textOf(attached).includes('[ref='), 'attach returned a ref-keyed snapshot');
 
 console.log('\n[1] maxDepth lever (was a dead no-op)');
@@ -95,6 +107,8 @@ await call('tools/call', { name: 'manage_window', arguments: { action: 'close' }
 server.stdin.end();
 await Bun.sleep(300);
 server.kill();
-calc.kill();
+closeWindow(calc.hWnd); // cursor-free WM_CLOSE (dispose≠close); no-op if manage_window already closed it
+calc.dispose();
+umbriel.uninitialize();
 console.log('\nPASS — MCP snapshot economy verified end-to-end (maxDepth live; Δ delta vs full re-ground).');
 process.exit(0);
