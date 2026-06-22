@@ -621,7 +621,7 @@ function rebuildSnapshot(maxDepth?: number, root?: Element, maxNodes: number = S
   }
   current = snapshot;
   epoch += 1;
-  const scope = root !== undefined ? ` scoped to ${JSON.stringify(root.name)}` : '';
+  const scope = root !== undefined ? ` scoped to ${JSON.stringify(redactSecrets(root.name))}` : ''; // root is a descendant CONTROL — its name is on-screen text (mask like every other control-name echo); window.name below is the window TITLE / identity, left as-is
   return { header: `### Snapshot (epoch ${epoch})${scope}: ${JSON.stringify(window.name)}`, tree: snapshot.tree };
 }
 

@@ -55,9 +55,11 @@ test('NO handler echoes a raw control name — every element/match/description/m
   // negative pin: any future `JSON.stringify(<control>.name)` without redactSecrets is an on-screen-content leak.
   // (window.name = the window TITLE, app identity not field content, is intentionally NOT masked; node.name inside
   // formatMsaa is covered by the formatMsaa OUTPUT wrap at the msaa_tree handler, so it is excluded here.)
-  for (const raw of ['JSON.stringify(element.name)', 'JSON.stringify(element.cachedName)', 'JSON.stringify(match.name)', 'JSON.stringify(description.name)', 'JSON.stringify(mark.name)']) {
+  for (const raw of ['JSON.stringify(element.name)', 'JSON.stringify(element.cachedName)', 'JSON.stringify(match.name)', 'JSON.stringify(description.name)', 'JSON.stringify(mark.name)', 'JSON.stringify(root.name)']) {
     expect(mcp).not.toContain(raw);
   }
+  // the desktop_snapshot {root} scope HEADER is built OUTSIDE the renderTree chokepoint, so it masks the scoping control's name itself
+  expect(mcp).toContain('scoped to ${JSON.stringify(redactSecrets(root.name))}');
 });
 
 test('the catch boundary redacts thrown error messages — a lib message can embed live control names (describeNoMatch)', () => {
