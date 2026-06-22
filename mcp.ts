@@ -166,7 +166,7 @@ const PROTOCOL_VERSION = '2025-11-25';
 const SUPPORTED_VERSIONS = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
 const SERVER_INFO = { name: 'umbriel', version: '1.11.1' }; // keep in sync with package.json + server.json (scripts/release-check.ts gates this)
 const INSTRUCTIONS =
-  'Drive Windows desktop apps via the UI Automation tree — and beyond it. Call list_windows, then attach (by hWnd or exact title — className is reliable only for single-window classes like Shell_TrayWnd, not the Chromium/Electron family) — attach ALREADY returns a ref-keyed tree, so act on those refs directly; call desktop_snapshot only to RE-ground after refs go stale (e.g. Button "Five" [ref=e49#1]); pass that ref VERBATIM (with its #generation tag) to click/invoke/type/toggle/set_value/inspect_element. Refs are valid ONLY for the most recent snapshot — every action returns a fresh one; re-ground from it. A ref from before a re-render is REJECTED (not silently mis-resolved), so always use the refs from the latest snapshot/delta. To stay cheap, an action that changes little returns just a "Δ" delta (the +/-/~ changes, with refs on appeared/renamed) instead of the full tree — your other refs stay valid; for a HIGH-DENSITY window (a non-virtualized LOB grid / toolbar / icon-wall with thousands of sibling controls) pass desktop_snapshot {maxNodes} (default 1500) to bound the walk — maxDepth caps DEPTH only and does NOT bound a flat/wide tree — or {root} to scope into one subtree. Prefer invoke/set_value/toggle/scroll (cursor-free — they need no focus and work on a minimized, background, occluded, or locked window — for a classic Win32/HWND app: set_value posts WM_SETTEXT, invoke/toggle on a "Button"-class control post BM_CLICK, all focus-clean — the raw UIA Value/Toggle/Invoke pattern would instead STEAL FOREGROUND to the control via the MSAA bridge, so these tools route around it — but a no-own-HWND WinUI/WPF/Electron SUB-control has only that pattern, so its invoke/toggle/set_value WILL raise+focus (un-minimize) its window; the result STRING discloses the steal (⚠) when it happens, so trust the result, not the tool name; a UWP/WinUI store app SUSPENDS its UI tree when minimized or fully backgrounded, so its tree reads empty and posted actions may not land until you restore/raise it) over click. To SEE beyond the attached window (a 2nd monitor, a game/browser, a composited surface, or anything with no window) use screen_capture; to see a SPECIFIC window even when occluded, in the background, or GPU-composited (where a plain screenshot is blank) use capture_window (Windows.Graphics.Capture); turn a pixel into a control with inspect_point. screenshot auto-falls-back PrintWindow → WGC → desktop-region. Read legacy/owner-draw windows with native_tree/msaa_tree. drag and real-cursor clicks move the actual mouse; SendInput-based input (press_key chord, hold_key, drag, and the type/paste fallback for a control with no own HWND) needs an unlocked, foregrounded desktop — the posted cursor-free paths do not: type (WM_CHAR) / paste (WM_PASTE) / press_key {ref} on an own-HWND control, plus set_value/invoke/toggle. launch/run/file tools and manage_window may be disabled by the server policy (UMBRIEL_PROFILE).';
+  'Drive Windows desktop apps via the UI Automation tree — and beyond it. Call list_windows, then attach (by hWnd or exact title — className is reliable only for single-window classes like Shell_TrayWnd, not the Chromium/Electron family) — attach ALREADY returns a ref-keyed tree, so act on those refs directly; call desktop_snapshot only to RE-ground after refs go stale (e.g. Button "Five" [ref=e49#1]); pass that ref VERBATIM (with its #generation tag) to click/invoke/type/toggle/set_value/inspect_element. Refs are valid ONLY for the most recent snapshot — every action returns a fresh one; re-ground from it. A ref from before a re-render is REJECTED (not silently mis-resolved), so always use the refs from the latest snapshot/delta. To stay cheap, an action that changes little returns just a "Δ" delta (the +/-/~ changes, with refs on appeared/renamed) instead of the full tree — your other refs stay valid; for a HIGH-DENSITY window (a non-virtualized LOB grid / toolbar / icon-wall with thousands of sibling controls) pass desktop_snapshot {maxNodes} (default 1500) to bound the walk, or {root} to scope into one subtree. Prefer invoke/set_value/toggle/scroll (cursor-free — they need no focus and work on a minimized, background, occluded, or locked window — for a classic Win32/HWND app: set_value posts WM_SETTEXT, invoke/toggle on a "Button"-class control post BM_CLICK, all focus-clean — the raw UIA Value/Toggle/Invoke pattern would instead STEAL FOREGROUND to the control via the MSAA bridge, so these tools route around it — but a no-own-HWND WinUI/WPF/Electron SUB-control has only that pattern, so its invoke/toggle/set_value WILL raise+focus (un-minimize) its window; the result STRING discloses the steal (⚠) when it happens, so trust the result, not the tool name; a UWP/WinUI store app SUSPENDS its UI tree when minimized or fully backgrounded, so its tree reads empty and posted actions may not land until you restore/raise it) over click. To SEE beyond the attached window (a 2nd monitor, a game/browser, a composited surface, or anything with no window) use screen_capture; to see a SPECIFIC window even when occluded, in the background, or GPU-composited (where a plain screenshot is blank) use capture_window (Windows.Graphics.Capture); turn a pixel into a control with inspect_point. screenshot auto-falls-back PrintWindow → WGC → desktop-region. Read legacy/owner-draw windows with native_tree/msaa_tree. drag and real-cursor clicks move the actual mouse; SendInput-based input (press_key chord, hold_key, drag, and the type/paste fallback for a control with no own HWND) needs an unlocked, foregrounded desktop — the posted cursor-free paths do not: type (WM_CHAR) / paste (WM_PASTE) / press_key {ref} on an own-HWND control, plus set_value/invoke/toggle. launch/run/file tools and manage_window may be disabled by the server policy (UMBRIEL_PROFILE).';
 // Shown instead of INSTRUCTIONS when the policy enables no 'input' category — so the system-prompt guidance never
 // describes action tools that tools/list does not expose (a readonly/restricted profile).
 const INSTRUCTIONS_READONLY =
@@ -2143,7 +2143,7 @@ const TOOLS: McpTool[] = [
     name: 'run_program',
     category: 'os',
     description:
-      'Run a console command and return its exit code, stdout, and stderr. For programs that exit on their own (CLI tools). NOT for GUI apps or servers that keep running — those are killed after timeoutMs (default 30000) and you get partial output; launch GUI apps with launch_app instead. Gated behind the "os" category.',
+      'Run a console command and return its exit code, stdout, and stderr. For programs that exit on their own (CLI tools). NOT for GUI apps or servers that keep running — those are killed after timeoutMs (default 30000) and you get partial output; launch GUI apps with launch_app instead.',
     inputSchema: {
       type: 'object',
       properties: { command: { type: 'string' }, args: { type: 'array', items: { type: 'string' } }, timeoutMs: { type: 'number', description: 'Kill the process and return partial output after this many ms (default 30000, max 300000).' } },
@@ -2153,13 +2153,13 @@ const TOOLS: McpTool[] = [
   {
     name: 'kill_process',
     category: 'os',
-    description: 'Terminate a process by {pid} (precise) or {name} — an EXACT case-insensitive image name that terminates EVERY process with that exact name (e.g. "chrome.exe" kills all Chrome). A substring is NOT accepted, so a stray short name cannot mass-kill; this server and its host process are never targeted. Reports killed / access-denied (elevated/protected — see current_user) / not-found. No taskkill/Stop-Process. Gated behind the "os" category; destructive.',
+    description: 'Terminate a process by {pid} (precise) or {name} — an EXACT case-insensitive image name that terminates EVERY process with that exact name (e.g. "chrome.exe" kills all Chrome). A substring is NOT accepted, so a stray short name cannot mass-kill; this server and its host process are never targeted. Reports killed / access-denied (elevated/protected — see current_user) / not-found. No taskkill/Stop-Process. Destructive.',
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Exact process id to terminate' }, name: { type: 'string', minLength: 1, description: 'EXACT image name (case-insensitive, e.g. "notepad.exe") — terminates ALL processes with that exact name' } } },
   },
   {
     name: 'manage_process',
     category: 'os',
-    description: 'Control a live process by {pid} WITHOUT killing it (no pssuspend/PowerShell): {action:"suspend"} freezes EVERY thread (pause a runaway/installer to inspect, or let the foreground recover), {action:"resume"} thaws it, {action:"priority", priority} renices it (drop a CPU hog to idle, or raise a stalled job). Never targets this server or its host. Reports the threads acted on / access-denied (elevated/protected — see current_user) / not-found. Gated behind the "os" category; destructive.',
+    description: 'Control a live process by {pid} WITHOUT killing it (no pssuspend/PowerShell): {action:"suspend"} freezes EVERY thread (pause a runaway/installer to inspect, or let the foreground recover), {action:"resume"} thaws it, {action:"priority", priority} renices it (drop a CPU hog to idle, or raise a stalled job). Never targets this server or its host. Reports the threads acted on / access-denied (elevated/protected — see current_user) / not-found. Destructive.',
     inputSchema: { type: 'object', properties: { pid: { type: 'number', description: 'Process id to control' }, action: { type: 'string', enum: ['suspend', 'resume', 'priority'], description: 'suspend/resume freeze-thaw every thread; priority renices' }, priority: { type: 'string', enum: ['idle', 'below', 'normal', 'above', 'high'], description: 'Required for action:"priority"' } }, required: ['pid', 'action'] },
   },
   {
@@ -2183,7 +2183,7 @@ const TOOLS: McpTool[] = [
   {
     name: 'set_display',
     category: 'os',
-    description: 'Change a monitor\'s mode natively (no Settings UI / WMI / PowerShell) — the symmetric WRITE half of get_displays, focus-free + BG-default. {device} is a get_displays device name (e.g. "\\\\.\\DISPLAY1"); set any of {width}/{height} (resolution), {orientation} (0|90|180|270 degrees), {refreshHz}. The mode is VALIDATED (CDS_TEST) before applying and applied DYNAMICALLY by default — Windows auto-reverts a bad mode after its confirm-timeout, so no permanent black screen; pass {persist:true} to write it to the registry. A rotation usually needs matching {width}/{height} (a portrait mode wants the dimensions swapped); an unsupported combo is rejected at validation (DISP_CHANGE_BADMODE) and nothing changes. REQUIRES {confirm:true}. Gated behind the "os" category; destructive.',
+    description: 'Change a monitor\'s mode natively (no Settings UI / WMI / PowerShell) — the symmetric WRITE half of get_displays, focus-free + BG-default. {device} is a get_displays device name (e.g. "\\\\.\\DISPLAY1"); set any of {width}/{height} (resolution), {orientation} (0|90|180|270 degrees), {refreshHz}. The mode is VALIDATED (CDS_TEST) before applying and applied DYNAMICALLY by default — Windows auto-reverts a bad mode after its confirm-timeout, so no permanent black screen; pass {persist:true} to write it to the registry. A rotation usually needs matching {width}/{height} (a portrait mode wants the dimensions swapped); an unsupported combo is rejected at validation (DISP_CHANGE_BADMODE) and nothing changes. REQUIRES {confirm:true}. Destructive.',
     inputSchema: { type: 'object', properties: { device: { type: 'string', description: 'A get_displays device name, e.g. "\\\\.\\DISPLAY1"' }, width: { type: 'number', description: 'Horizontal resolution in pixels' }, height: { type: 'number', description: 'Vertical resolution in pixels' }, orientation: { type: 'number', enum: [0, 90, 180, 270], description: 'Rotation in degrees' }, refreshHz: { type: 'number', description: 'Refresh rate in Hz' }, persist: { type: 'boolean', description: 'Persist to the registry (default: dynamic, not persisted)' }, confirm: { type: 'boolean', description: 'MUST be true to change the mode (safety gate)' } }, required: ['device', 'confirm'] },
   },
   {
@@ -2226,7 +2226,7 @@ const TOOLS: McpTool[] = [
     name: 'manage_task',
     category: 'os',
     description:
-      'Create/update or delete a Windows scheduled task natively (no schtasks /create|/delete, no Register/Unregister-ScheduledTask shell). {action:"create"} registers (or updates) a task in the root folder under {name} from a task-definition {xml} string — the XML carries the trigger(s)/action(s)/principal, so it drives ANY schedule (at logon, daily, on-idle, …); generate it in the Task Scheduler schema. {action:"delete"} removes the task by {name}. Runs as the current interactive user. REQUIRES {confirm:true} — a task is an autorun/persistence entry. Gated behind the "os" category; destructive.',
+      'Create/update or delete a Windows scheduled task natively (no schtasks /create|/delete, no Register/Unregister-ScheduledTask shell). {action:"create"} registers (or updates) a task in the root folder under {name} from a task-definition {xml} string — the XML carries the trigger(s)/action(s)/principal, so it drives ANY schedule (at logon, daily, on-idle, …); generate it in the Task Scheduler schema. {action:"delete"} removes the task by {name}. Runs as the current interactive user. REQUIRES {confirm:true} — a task is an autorun/persistence entry. Destructive.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2241,14 +2241,14 @@ const TOOLS: McpTool[] = [
   {
     name: 'control_service',
     category: 'os',
-    description: 'Query / start / stop / read-config a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "config" returns how it starts (boot/system/auto/manual/disabled), the on-disk binary/command line it runs, and the account it runs as; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state (or "already running"/"already stopped" when the service is already in the target state — the goal is met, not an error) / denied / not-found. Gated behind the "os" category; destructive on start/stop.',
+    description: 'Query / start / stop / read-config a Windows service by {name} natively (no sc / Start-Service / Stop-Service shell). {action:"query"} returns its state + owning pid; "config" returns how it starts (boot/system/auto/manual/disabled), the on-disk binary/command line it runs, and the account it runs as; "start"/"stop" change it (usually need elevation → reports access-denied cleanly). Reports the resulting state (or "already running"/"already stopped" when the service is already in the target state — the goal is met, not an error) / denied / not-found. Destructive on start/stop.',
     inputSchema: { type: 'object', properties: { name: { type: 'string', description: 'Service short name (e.g. "Spooler", not the display name)' }, action: { type: 'string', enum: ['query', 'start', 'stop', 'config'], description: 'default query' } }, required: ['name'] },
   },
   {
     name: 'power_state',
     category: 'os',
     description:
-      'Drive the Windows session/power state natively (no shutdown.exe / logoff / rundll32 user32,LockWorkStation|powrprof,SetSuspendState / PowerShell Stop-Computer|Restart-Computer). {action}: "lock" locks the workstation (reversible, no data loss); "logoff" signs the current user out; "restart" reboots; "shutdown" powers off; "sleep" suspends to RAM; "hibernate" suspends to disk. restart/shutdown are PLANNED + non-forced (apps are asked to close, not killed); restart/shutdown/sleep/hibernate self-enable the shutdown privilege (no elevation for the user\'s own session). REQUIRES {confirm:true} — lock aside, these end or suspend the session. Gated behind the "os" category; destructive.',
+      'Drive the Windows session/power state natively (no shutdown.exe / logoff / rundll32 user32,LockWorkStation|powrprof,SetSuspendState / PowerShell Stop-Computer|Restart-Computer). {action}: "lock" locks the workstation (reversible, no data loss); "logoff" signs the current user out; "restart" reboots; "shutdown" powers off; "sleep" suspends to RAM; "hibernate" suspends to disk. restart/shutdown are PLANNED + non-forced (apps are asked to close, not killed); restart/shutdown/sleep/hibernate self-enable the shutdown privilege (no elevation for the user\'s own session). REQUIRES {confirm:true} — lock aside, these end or suspend the session. Destructive.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -2267,79 +2267,79 @@ const TOOLS: McpTool[] = [
   {
     name: 'set_env',
     category: 'os',
-    description: 'Set or delete an environment variable in a scope (no setx/reg/PowerShell). {scope:"user"} writes HKCU\\Environment + broadcasts WM_SETTINGCHANGE so it PERSISTS across reboots and new processes inherit it (set JAVA_HOME, add to PATH); "machine" writes HKLM (needs elevation → clean access-denied); "process" is transient (this server + its children). Pass {value} to set, or {delete:true} to remove. Gated behind the "os" category; destructive.',
+    description: 'Set or delete an environment variable in a scope (no setx/reg/PowerShell). {scope:"user"} writes HKCU\\Environment + broadcasts WM_SETTINGCHANGE so it PERSISTS across reboots and new processes inherit it (set JAVA_HOME, add to PATH); "machine" writes HKLM (needs elevation → clean access-denied); "process" is transient (this server + its children). Pass {value} to set, or {delete:true} to remove. Destructive.',
     inputSchema: { type: 'object', properties: { scope: { type: 'string', enum: ['process', 'user', 'machine'] }, name: { type: 'string' }, value: { type: 'string', description: 'The value to set (omit and pass delete:true to remove)' }, delete: { type: 'boolean', description: 'Remove the variable instead of setting it' } }, required: ['scope', 'name'] },
   },
   {
     name: 'registry_get',
     category: 'os',
-    description: 'Read ONE Windows registry value natively (no reg query / Get-ItemProperty shell): an install path, an OS/app version, a policy or HKCU preference. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {value} the value name (omit for the key default). Returns the typed value (REG_SZ/DWORD/QWORD/MULTI_SZ/BINARY decoded). Gated behind the "os" category.',
+    description: 'Read ONE Windows registry value natively (no reg query / Get-ItemProperty shell): an install path, an OS/app version, a policy or HKCU preference. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {value} the value name (omit for the key default). Returns the typed value (REG_SZ/DWORD/QWORD/MULTI_SZ/BINARY decoded).',
     inputSchema: { type: 'object', properties: { hive: { type: 'string', description: 'HKLM | HKCU | HKCR | HKU' }, key: { type: 'string', description: 'Subkey path, e.g. "SOFTWARE\\\\Microsoft\\\\Windows NT\\\\CurrentVersion"' }, value: { type: 'string', description: 'Value name (omit for the key default)' } }, required: ['hive', 'key'] },
   },
   {
     name: 'registry_list',
     category: 'os',
-    description: 'Enumerate a Windows registry key natively (no reg query shell): its immediate subkeys and its values (name / type / decoded data). {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path. Gated behind the "os" category.',
+    description: 'Enumerate a Windows registry key natively (no reg query shell): its immediate subkeys and its values (name / type / decoded data). {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path.',
     inputSchema: { type: 'object', properties: { hive: { type: 'string', description: 'HKLM | HKCU | HKCR | HKU' }, key: { type: 'string', description: 'Subkey path' } }, required: ['hive', 'key'] },
   },
   {
     name: 'registry_set',
     category: 'os',
-    description: 'Write or delete ONE registry value on an EXISTING key (no reg add/Set-ItemProperty shell) — configure an app/policy/preference outside env vars (e.g. show file extensions, seed an app setting). {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the subkey path, {value} the value name (omit for the key default), {type} ∈ REG_SZ|REG_EXPAND_SZ|REG_DWORD|REG_QWORD|REG_MULTI_SZ, {data} (string for SZ, integer for DWORD/QWORD, string[] for MULTI_SZ), or {delete:true}. REQUIRES {confirm:true} — a wrong write can corrupt the machine or an app. The key must already exist; HKLM/protected keys need elevation (clean access-denied). Gated behind the "os" category; destructive.',
+    description: 'Write or delete ONE registry value on an EXISTING key (no reg add/Set-ItemProperty shell) — configure an app/policy/preference outside env vars (e.g. show file extensions, seed an app setting). {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the subkey path, {value} the value name (omit for the key default), {type} ∈ REG_SZ|REG_EXPAND_SZ|REG_DWORD|REG_QWORD|REG_MULTI_SZ, {data} (string for SZ, integer for DWORD/QWORD, string[] for MULTI_SZ), or {delete:true}. REQUIRES {confirm:true} — a wrong write can corrupt the machine or an app. The key must already exist; HKLM/protected keys need elevation (clean access-denied). Destructive.',
     inputSchema: { type: 'object', properties: { hive: { type: 'string', enum: ['HKLM', 'HKCU', 'HKCR', 'HKU'] }, key: { type: 'string', description: 'Subkey path (must already exist)' }, value: { type: 'string', description: 'Value name (omit for the key default)' }, type: { type: 'string', enum: ['REG_SZ', 'REG_EXPAND_SZ', 'REG_DWORD', 'REG_QWORD', 'REG_MULTI_SZ'] }, data: { description: 'string | integer | string[] matching {type}' }, delete: { type: 'boolean', description: 'Delete the value instead of writing' }, confirm: { type: 'boolean', description: 'MUST be true to perform the write (safety gate)' } }, required: ['hive', 'key', 'confirm'] },
   },
   {
     name: 'registry_key',
     category: 'os',
-    description: 'Create or delete a registry KEY natively (no reg add/reg delete/New-Item/Remove-Item shell) — the half registry_set lacks: seed a new HKCU\\Software\\<App> config subtree BEFORE registry_set can write a value into it, or remove an app/policy key. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {action} ∈ create|delete. create makes the key AND any missing parent keys (idempotent — reports created vs already-existed). delete removes the key; a bare delete refuses a key that still has subkeys, so pass {recursive:true} to delete the whole subtree. REQUIRES {confirm:true} — a recursive delete nukes every descendant. HKLM/protected keys need elevation (clean access-denied). Gated behind the "os" category; destructive.',
+    description: 'Create or delete a registry KEY natively (no reg add/reg delete/New-Item/Remove-Item shell) — the half registry_set lacks: seed a new HKCU\\Software\\<App> config subtree BEFORE registry_set can write a value into it, or remove an app/policy key. {hive} ∈ HKLM|HKCU|HKCR|HKU, {key} the backslash-separated subkey path, {action} ∈ create|delete. create makes the key AND any missing parent keys (idempotent — reports created vs already-existed). delete removes the key; a bare delete refuses a key that still has subkeys, so pass {recursive:true} to delete the whole subtree. REQUIRES {confirm:true} — a recursive delete nukes every descendant. HKLM/protected keys need elevation (clean access-denied). Destructive.',
     inputSchema: { type: 'object', properties: { hive: { type: 'string', enum: ['HKLM', 'HKCU', 'HKCR', 'HKU'] }, key: { type: 'string', description: 'Subkey path, e.g. "Software\\\\MyApp\\\\Config"' }, action: { type: 'string', enum: ['create', 'delete'] }, recursive: { type: 'boolean', description: 'On delete, also remove all subkeys (required to delete a key that has subkeys)' }, confirm: { type: 'boolean', description: 'MUST be true to create/delete (safety gate)' } }, required: ['hive', 'key', 'action', 'confirm'] },
   },
   {
     name: 'open_path',
     category: 'os',
-    description: 'Open a file, folder, or URL with its default handler (Explorer/browser). Gated behind the "os" category.',
+    description: 'Open a file, folder, or URL with its default handler (Explorer/browser).',
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
   {
     name: 'read_file',
     category: 'fs',
-    description: 'Read a text file (first 20k chars). Gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'Read a text file (first 20k chars). Restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
   {
     name: 'write_file',
     category: 'fs',
-    description: 'Write a text file (overwrites). Gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'Write a text file (overwrites). Restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, content: { type: 'string' } }, required: ['path', 'content'] },
   },
   {
     name: 'list_dir',
     category: 'fs',
-    description: 'List a directory (names + dir/file kind). Gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'List a directory (names + dir/file kind). Restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
   {
     name: 'stat_path',
     category: 'fs',
-    description: 'Stat a path natively (no dir/Get-Item shell): whether it exists, file vs directory, byte size, modified + created times, and the Windows attribute flags (read-only / hidden / system / reparse-point). Check a file\'s size BEFORE read_file (which caps at 20k chars). Gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'Stat a path natively (no dir/Get-Item shell): whether it exists, file vs directory, byte size, modified + created times, and the Windows attribute flags (read-only / hidden / system / reparse-point). Check a file\'s size BEFORE read_file (which caps at 20k chars). Restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
   {
     name: 'make_dir',
     category: 'fs',
-    description: 'Create a directory (and any missing parents) natively, no mkdir shell. Gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'Create a directory (and any missing parents) natively, no mkdir shell. Restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
   {
     name: 'copy_file',
     category: 'fs',
-    description: 'Copy a file or a directory tree from {from} to {to} natively, no copy/xcopy shell. Refuses if {to} already exists unless {overwrite:true}. Gated behind the "fs" category; both paths restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'Copy a file or a directory tree from {from} to {to} natively, no copy/xcopy shell. Refuses if {to} already exists unless {overwrite:true}. Both paths restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' }, overwrite: { type: 'boolean', description: 'Replace the destination if it already exists (default false)' } }, required: ['from', 'to'] },
   },
   {
     name: 'move_file',
     category: 'fs',
-    description: 'Move/rename a file or directory from {from} to {to} natively (rename, or copy+delete across volumes), no move shell. Refuses if {to} already exists unless {overwrite:true}. Gated behind the "fs" category; both paths restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'Move/rename a file or directory from {from} to {to} natively (rename, or copy+delete across volumes), no move shell. Refuses if {to} already exists unless {overwrite:true}. Both paths restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { from: { type: 'string' }, to: { type: 'string' }, overwrite: { type: 'boolean', description: 'Replace the destination if it already exists (default false)' } }, required: ['from', 'to'] },
   },
   {
