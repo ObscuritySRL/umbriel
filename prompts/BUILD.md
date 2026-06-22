@@ -22,4 +22,4 @@ VERIFY LIVE: wrong COM slot SEGFAULTS→prove ∀ slot live+extend slot-gate.tes
 
 LAW (AGENTS.md): surgical diffs; NO casts (fix types); cast-free com.ts vcall; .ptr inline; struct@call-site; tsc0 ∀ change; AI.md generic. SHIP=commit&push ∀ slice (Conventional Commits 1/win); NO publish/server.json (owner releases). findings/ current — re-confirm dead-ends/declined STILL walls.
 
-ANCHOR: ~95 gated MCP tools (UMBRIEL_PROFILE readonly|safe|full). FIRST ACTION: spawn ALL finders NOW.
+ANCHOR: ~99 gated MCP tools (UMBRIEL_PROFILE readonly|safe|full). FIRST ACTION: spawn ALL finders NOW.

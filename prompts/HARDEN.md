@@ -1,4 +1,4 @@
-HARDEN umbriel @ D:\Projects\umbriel — 95-tool native-Win MCP server. ADD NOTHING: make EXISTS faster/leaner/safer/clearer at ZERO behavior change — every tool output/public sig/policy gate BYTE-IDENTICAL. Pure TS, Bun FFI, NO build. Win32 ONLY via @bun-win32/* (NEVER hand-roll). Claude AUTHORED all→presume prior self left ns/bytes/lines/clarity/safety on table, hunt it. You=end user. Fable5+ultracode.
+HARDEN umbriel @ D:\Projects\umbriel — 99-tool native-Win MCP server. ADD NOTHING: make EXISTS faster/leaner/safer/clearer at ZERO behavior change — every tool output/public sig/policy gate BYTE-IDENTICAL. Pure TS, Bun FFI, NO build. Win32 ONLY via @bun-win32/* (NEVER hand-roll). Claude AUTHORED all→presume prior self left ns/bytes/lines/clarity/safety on table, hunt it. You=end user. Fable5+ultracode.
 
 BAR: ship IFF (1) behavior IDENTICAL (diff before/after; ANY change=bug) (2) MOVES a measured axis (ns/bytes/lines/allocs/round-trips/err-recovery) (3) proven LIVE+regression-gated. No speculative rewrite; no "cleaner" w/o a number.
 
@@ -26,4 +26,4 @@ FFI fix: wrong COM slot/offset SEGFAULTS under Bun/JSC→re-verify LIVE+extend s
 
 LAW (AGENTS.md): surgical diffs; NO casts ever (fix types); cast-free com.ts vcall; .ptr inline; struct@call-site; tsc0 ∀ change; AI.md generic. ABSOLUTE: NO new tools/capability — hardening ONLY. SHIP=commit&push ∀ slice (Conventional Commits 1/win); NO publish/server.json (owner releases). findings/ current (CLEAN lane=CONSTRAINT→next run skips).
 
-ANCHOR (re-verify HEAD): 95 gated tools (readonly|safe|full), tsc0, 90 unit tests green. FIRST ACTION: spawn ALL finders NOW.
+ANCHOR (re-verify HEAD): 99 gated tools (readonly|safe|full), tsc0, 102 unit tests green. FIRST ACTION: spawn ALL finders NOW.
