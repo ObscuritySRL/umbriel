@@ -52,6 +52,18 @@ removed.
   `nullcheck.ts --fix` (or hand-add `| NULL`). NOT changed autonomously — umbriel's non-Ex workaround is unaffected
   either way. (The 252-vs-301 measurement above is real evidence the NULL-for-all-services limitation exists.)
 
+### d3d11 · `CreateDirect3D11DeviceFromDXGIDevice` · first arg typed `ptr`, cannot accept a bigint COM pointer — `HAND-ROLLED` (`capture/wgc.ts:62`)
+- **Need:** WGC background capture (`capture/wgc.ts`) builds the `IDXGIDevice` as a u64 COM-interface pointer — umbriel's
+  whole vcall spine passes interface pointers as `u64`/`bigint` (`read.u64` decode, never a `Buffer`), and the first param
+  of `CreateDirect3D11DeviceFromDXGIDevice` IS that `IDXGIDevice*`.
+- **Blocker:** `@bun-win32/d3d11` (`structs/D3d11.ts:53`) types the symbol `args: [FFIType.ptr, FFIType.ptr]` (wrapper param
+  `dxgiDevice: IDXGIDevice`), so a `bigint` interface pointer does not type-check through the binding, and casts are forbidden.
+- **Workaround in umbriel (HAND-ROLLED):** `capture/wgc.ts:62` declares a local `dlopen('d3d11.dll', {
+  CreateDirect3D11DeviceFromDXGIDevice: { args: [FFIType.u64, FFIType.ptr], returns: FFIType.i32 } })` — the SOLE `dlopen`
+  hand-roll in umbriel source. (The second param stays `ptr` — it is the out `PIInspectable*`, passed as a buffer.)
+- **Fix:** retype `dxgiDevice` as a `u64` COM pointer (args `[u64, ptr]`) in `@bun-win32/d3d11`; then drop the local
+  `dlopen` and call the binding (`D3d11.CreateDirect3D11DeviceFromDXGIDevice`).
+
 ## Resolved this session (no owner action — recorded so the fabricated "no binding" claims don't resurface)
 - **WindowsAccessBridge-64.dll · Java Access Bridge — binding PUBLISHED + INTEGRATED (hand-roll removed).**
   `@bun-win32/windowsaccessbridge-64@1.0.0` shipped (note the hyphen — `-64`, not the earlier-guessed
