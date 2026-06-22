@@ -1176,7 +1176,7 @@ function assertActionable(element: Element, verb: string): void {
   );
 }
 
-function act(element: Element, action: string, text: string | undefined, submit = false): string {
+function act(element: Element, action: string, text: string | undefined, submit = false, mode: 'replace' | 'add' | 'remove' = 'replace'): string {
   if (action === 'read') {
     if (element.isPassword) return 'value: (password — withheld)';
     const content = element.value || element.text(); // NOT element.name — returning the label dressed as `value:` is a silent wrong read
@@ -1211,7 +1211,12 @@ function act(element: Element, action: string, text: string | undefined, submit 
   if (action === 'toggle') return patternAction('toggle', () => `${toggleSmart(element)} ${target}`);
   if (action === 'expand') return withPopupNote(() => patternAction('expand', () => (element.expand(), `expanded ${target}`)));
   if (action === 'collapse') return patternAction('collapse', () => (element.collapse(), `collapsed ${target}`));
-  if (action === 'select') return patternAction('select', () => disclosingPatternAct(`selected ${target}`, () => element.select(), undefined, SELECT_STEAL_NOTE)); // SelectionItem.Select by name in one call (grid_cell{do:select} advertised this); own-HWND classic items route through the bridge (foreground move disclosed), WinUI/WPF/Chromium stay cursor-free
+  if (action === 'select') {
+    // SelectionItem add/remove/replace by name in one call (grid_cell{do:select} routes here too, mode-less → replace);
+    // own-HWND classic items route through the bridge (foreground move disclosed), WinUI/WPF/Chromium stay cursor-free.
+    const label = mode === 'add' ? 'added to selection' : mode === 'remove' ? 'removed from selection' : 'selected';
+    return patternAction('select', () => disclosingPatternAct(`${label} ${target}`, () => (mode === 'add' ? element.addToSelection() : mode === 'remove' ? element.removeFromSelection() : element.select()), undefined, SELECT_STEAL_NOTE));
+  }
   throw new Error(`unknown action ${JSON.stringify(action)} — valid "do" verbs are: read, invoke, click, focus, type, set_value, toggle, expand, collapse, select.`);
 }
 
@@ -1545,7 +1550,7 @@ const TOOLS: McpTool[] = [
     name: 'find_and_act',
     category: 'input',
     description:
-      'Find a control and act in one call. Target by ref (from the latest snapshot) OR selector. A selector acts on the FIRST match — if it could be ambiguous, pass a ref or a tighter selector (add automationId/controlType). Action is invoke|click|focus|type|set_value|toggle|expand|collapse|select|read (select = cursor-free SelectionItem for a tab/radio/list-item; focus = UIA SetFocus). Playwright-style AUTO-WAIT for ACTIONABILITY: a selector that matches nothing YET, OR a single mutating-verb target that is present-but-DISABLED (a Save-until-dirty / Next-until-valid button), is re-queried for up to 2s (override with timeout, set timeout:0 to fail immediately) until it is present AND enabled, then acted on — so you rarely need a separate wait_for. If it never enables within the budget, the mutating verbs (invoke/click/type/set_value/toggle) still refuse rather than no-op with a false success.',
+      'Find a control and act in one call. Target by ref (from the latest snapshot) OR selector. A selector acts on the FIRST match — if it could be ambiguous, pass a ref or a tighter selector (add automationId/controlType). Action is invoke|click|focus|type|set_value|toggle|expand|collapse|select|read (select = cursor-free SelectionItem for a tab/radio/list-item; focus = UIA SetFocus). Playwright-style AUTO-WAIT for ACTIONABILITY: a selector that matches nothing YET, OR a single mutating-verb target that is present-but-DISABLED (a Save-until-dirty / Next-until-valid button), is re-queried for up to 2s (override with timeout, set timeout:0 to fail immediately) until it is present AND enabled, then acted on — so you rarely need a separate wait_for. If it never enables within the budget, the mutating verbs (invoke/click/type/set_value/toggle) still refuse rather than no-op with a false success. For do:select, mode:add multi-selects (keeps existing) and mode:remove deselects (default replace).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1555,6 +1560,7 @@ const TOOLS: McpTool[] = [
         do: { type: 'string', enum: ['invoke', 'click', 'type', 'set_value', 'toggle', 'expand', 'collapse', 'select', 'focus', 'read'] },
         text: { type: 'string', description: 'Text for type / set_value' },
         submit: { type: 'boolean', description: 'Press Enter after a type' },
+        mode: { type: 'string', enum: ['replace', 'add', 'remove'], description: 'For do:select only — replace (default, clears other selections), add (multi-select, keeps the others), remove (deselect). Ignored by other verbs.' },
         timeout: { type: 'number', description: 'Auto-wait budget in ms for a not-yet-present OR (for a mutating verb) not-yet-enabled target (default 2000; 0 = no wait, fail immediately). Ignored when targeting by ref.' },
       },
       required: ['do'],
@@ -1564,7 +1570,7 @@ const TOOLS: McpTool[] = [
     name: 'reveal',
     category: 'input',
     description:
-      'Scroll a VIRTUALIZED / off-screen list, grid, or tree item into view by selector, then optionally act on it. Use when a desktop_snapshot omits an item because it is scrolled out of view (Explorer folders, long lists, data grids, horizontal carousels) — those rows are not in the a11y tree until realized. Scans the container vertically (primary), then horizontally when it only scrolls sideways. Cursor-free. do = invoke|click|focus|type|set_value|toggle|select|read; omit do to just bring it into the next snapshot (it then has a ref).',
+      'Scroll a VIRTUALIZED / off-screen list, grid, or tree item into view by selector, then optionally act on it. Use when a desktop_snapshot omits an item because it is scrolled out of view (Explorer folders, long lists, data grids, horizontal carousels) — those rows are not in the a11y tree until realized. Scans the container vertically (primary), then horizontally when it only scrolls sideways. Cursor-free. do = invoke|click|focus|type|set_value|toggle|select|read; omit do to just bring it into the next snapshot (it then has a ref). For do:select, mode:add multi-selects (keeps existing) and mode:remove deselects.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -1573,6 +1579,7 @@ const TOOLS: McpTool[] = [
         do: { type: 'string', enum: ['invoke', 'click', 'type', 'set_value', 'toggle', 'select', 'focus', 'read'] },
         text: { type: 'string', description: 'Text for type / set_value' },
         submit: { type: 'boolean', description: 'Press Enter after a type' },
+        mode: { type: 'string', enum: ['replace', 'add', 'remove'], description: 'For do:select only — replace (default), add (multi-select, keeps the others), remove (deselect).' },
       },
       required: ['selector'],
     },
@@ -2542,7 +2549,7 @@ const HANDLERS: Record<string, ToolHandler> = {
             .map((match) => `  - ${match.controlTypeName} ${JSON.stringify(match.name)}${match.automationId.length > 0 ? ` [automationId=${match.automationId}]` : ''} {x:${match.boundingRectangle.x},y:${match.boundingRectangle.y}}`)
             .join('\n')}${matches.length > 10 ? `\n  … +${matches.length - 10} more` : ''}`,
         );
-      const outcome = act(matches[0]!, action, typeof args.text === 'string' ? args.text : undefined, args.submit === true);
+      const outcome = act(matches[0]!, action, typeof args.text === 'string' ? args.text : undefined, args.submit === true, args.mode === 'add' ? 'add' : args.mode === 'remove' ? 'remove' : 'replace');
       return observe(matches.length > 1 ? `${outcome} (read the first of ${matches.length} matches)` : outcome);
     } finally {
       for (const match of matches) match.release();
@@ -2555,7 +2562,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const element = window.reveal(selector);
     if (element === null) throw new Error(`reveal could not surface a match by scrolling — ${window.describeNoMatch(selector)}`);
     try {
-      return withSnapshot(typeof args.do === 'string' ? act(element, args.do, typeof args.text === 'string' ? args.text : undefined, args.submit === true) : `revealed ${named(element)}`);
+      return withSnapshot(typeof args.do === 'string' ? act(element, args.do, typeof args.text === 'string' ? args.text : undefined, args.submit === true, args.mode === 'add' ? 'add' : args.mode === 'remove' ? 'remove' : 'replace') : `revealed ${named(element)}`);
     } finally {
       element.release();
     }
