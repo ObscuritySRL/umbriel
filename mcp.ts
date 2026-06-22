@@ -240,10 +240,14 @@ const PROFILES: Record<string, readonly ToolCategory[]> = {
 };
 
 function envSet(name: string): Set<string> {
+  // Lowercase every entry: tool names and all 5 categories are lowercase, so a case-variant in UMBRIEL_ALLOW/DENY
+  // (e.g. UMBRIEL_DENY=OS) would otherwise never match — and DENY failing to match fails OPEN, defeating the
+  // documented deny-wins guarantee (a deployer forbidding a destructive category gets a tool that stays enabled).
+  // Normalizes like the sibling gates (requestedProfile, cursorDenied, fsRoot); byte-safe for any correct config.
   return new Set(
     (Bun.env[name] ?? '')
       .split(',')
-      .map((part) => part.trim())
+      .map((part) => part.trim().toLowerCase())
       .filter((part) => part.length > 0),
   );
 }
