@@ -37,3 +37,11 @@ test('the snapshot render chokepoint redacts — the most frequent on-screen rea
 test('find_text redacts the matched on-screen TextPattern text', () => {
   expect(mcp).toContain('found and selected ${JSON.stringify(redactSecrets(matched))}');
 });
+
+test('the snapshot DIFF fast-path + the MSAA / Java / native tree renderers redact too (the renderTree siblings)', () => {
+  // a value-changing action (type/paste/set_value) returns the DIFF, not the full body — it re-emits value=/name and must mask
+  expect(mcp).toContain('${redactSecrets(delta.text)}');
+  expect(mcp).toContain('redactSecrets(formatMsaa(tree))'); // msaa_tree (legacy accName is on-screen text)
+  expect(mcp).toContain('redactSecrets(renderJavaTree(tree))'); // java_tree + javaObservation (java_invoke/java_set_text)
+  expect(mcp).toContain('redactSecrets(renderWindowTree('); // native_tree (window text)
+});

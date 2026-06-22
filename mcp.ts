@@ -928,7 +928,7 @@ function auditDenied(tool: string, category: ToolCategory, args: Record<string, 
 function javaObservation(hWnd: bigint): string {
   const tree = javaTree(hWnd);
   if (tree === null) return '';
-  const text = renderJavaTree(tree);
+  const text = redactSecrets(renderJavaTree(tree)); // a Swing field's accessible name IS its on-screen text — mask secrets like the UIA snapshot
   return `\n\n${text.length > 4000 ? `${text.slice(0, 4000)}\n…(tree truncated — call java_tree for the full view)` : text}`;
 }
 
@@ -1004,7 +1004,7 @@ function withSnapshot(message: string): object {
       if (delta.count === 0 && bodyUnchanged) return noUiChange();
       if (delta.count > 0 && delta.count <= DIFF_MAX_CHANGES) {
         lastSnapshotBody = body;
-        return textResult(stampRefs(`${message}\n\n${header} — Δ ${delta.count} change${delta.count === 1 ? '' : 's'} (other refs unchanged)\n${delta.text}${foregroundNudge()}`)); // no churn → generation held, prior refs stay valid
+        return textResult(stampRefs(`${message}\n\n${header} — Δ ${delta.count} change${delta.count === 1 ? '' : 's'} (other refs unchanged)\n${redactSecrets(delta.text)}${foregroundNudge()}`)); // no churn → generation held, prior refs stay valid; redact like the full-body renderTree chokepoint (the diff re-emits a control's value=/name change)
       }
     }
   }
@@ -3210,17 +3210,17 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (!element.setView(id)) return errorResult(`set_view: could not switch to view ${id} — the control has no MultipleView pattern or ${id} is not a supported id (call list_views).`);
     return withSnapshot(`switched ${target} to view ${id}`);
   },
-  native_tree: (args) => textResult(renderWindowTree(umbriel.windowTree(resolveHwnd(args), typeof args.maxDepth === 'number' ? args.maxDepth : 12))),
+  native_tree: (args) => textResult(redactSecrets(renderWindowTree(umbriel.windowTree(resolveHwnd(args), typeof args.maxDepth === 'number' ? args.maxDepth : 12)))), // window text is on-screen content — mask secrets like the UIA snapshot
   msaa_tree: (args) => {
     const tree = umbriel.msaaTree(resolveHwnd(args), typeof args.maxDepth === 'number' ? args.maxDepth : 8);
-    return textResult(tree === null ? '(no MSAA/IAccessible tree for this window)' : formatMsaa(tree));
+    return textResult(tree === null ? '(no MSAA/IAccessible tree for this window)' : redactSecrets(formatMsaa(tree))); // MSAA accName is on-screen text — mask secrets like the UIA snapshot
   },
   java_tree: (args) => {
     const tree = javaTree(resolveHwnd(args), { maxDepth: typeof args.maxDepth === 'number' ? args.maxDepth : 24, maxNodes: typeof args.maxNodes === 'number' ? args.maxNodes : 2000 });
     return textResult(
       tree === null
         ? '(not a bridge-visible Java window — if this is a Swing/AWT/JavaFX app, its JVM must have the Java Access Bridge enabled: run `jabswitch -enable` then restart the app, or launch it with -Djavax.accessibility.assistive_technologies=com.sun.java.accessibility.AccessBridge. Otherwise use ocr / screen_capture for its pixels.)'
-        : renderJavaTree(tree),
+        : redactSecrets(renderJavaTree(tree)),
     );
   },
   java_invoke: (args) => {
