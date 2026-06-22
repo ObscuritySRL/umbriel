@@ -381,7 +381,9 @@ function requireNumber(args: Record<string, unknown>, key: string): number {
 // mode, Name+ControlType cached — the very values the rendered tree shows), so read cached to skip two cross-process
 // round-trips; a find()-resolved element has nothing cached (cachedControlType===0) → read live.
 function named(element: Element): string {
-  return element.cachedControlType === 0 ? `${element.controlTypeName} ${JSON.stringify(element.name)}` : `${element.cachedControlTypeName} ${JSON.stringify(element.cachedName)}`;
+  // The name echoed in every action result (clicked/selected/toggled X) — for a list/tree/text item the UIA name IS the
+  // on-screen text, so mask secret shapes like the snapshot tree (a credential-manager row's label could be a token).
+  return element.cachedControlType === 0 ? `${element.controlTypeName} ${JSON.stringify(redactSecrets(element.name))}` : `${element.cachedControlTypeName} ${JSON.stringify(redactSecrets(element.cachedName))}`;
 }
 
 /** Resolve a controlType selector value to its numeric UIA id — a number, a numeric string ("50000"), OR a role
@@ -1194,7 +1196,7 @@ function act(element: Element, action: string, text: string | undefined, submit 
   if (ACTIONABILITY_GATED.has(action)) assertActionable(element, action); // Playwright-class enabled gate before the mutating verb actually fires
   // Name the RESOLVED control in every result so an LLM gets target confirmation on an ambiguous selector match
   // (the named-result contract computer.ts semanticClick + AI.md:181 already document). One name/role read per action.
-  const target = `${element.controlTypeName} ${JSON.stringify(element.name)}`;
+  const target = `${element.controlTypeName} ${JSON.stringify(redactSecrets(element.name))}`; // mask secret shapes in the echoed control name (a list/tree/text item's name IS on-screen text)
   if (action === 'invoke') return withPopupNote(() => patternAction('invoke', () => `${invokeSmart(element)} ${target}`));
   if (action === 'click') return `${clickElement(element, 'left', false, false)} ${target}`;
   if (action === 'focus') return element.focus(), `focused ${target}`; // UIA SetFocus — cursor-free, no SendInput, so never gated
