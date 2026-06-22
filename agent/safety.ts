@@ -61,8 +61,8 @@ export function safeExecute(window: Element, actions: readonly AgentAction[], op
       options.onAction?.({ action, target, ok: true, dryRun: false });
       results.push({ action, ok: true, value });
     } catch (error) {
-      options.onAction?.({ action, target, ok: false, dryRun: options.dryRun === true, error: (error as Error).message });
-      results.push({ action, ok: false, error: (error as Error).message });
+      options.onAction?.({ action, target, ok: false, dryRun: options.dryRun === true, error: error instanceof Error ? error.message : String(error) });
+      results.push({ action, ok: false, error: error instanceof Error ? error.message : String(error) });
     } finally {
       element.release();
     }

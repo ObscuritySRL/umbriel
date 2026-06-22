@@ -298,7 +298,7 @@ const redactCustom = (() => {
   try {
     return new RegExp(raw, 'g');
   } catch (error) {
-    log(`UMBRIEL_REDACT is not a valid regex (${(error as Error).message}); falling back to the built-in secret shapes`);
+    log(`UMBRIEL_REDACT is not a valid regex (${error instanceof Error ? error.message : String(error)}); falling back to the built-in secret shapes`);
     return undefined;
   }
 })();
@@ -346,7 +346,7 @@ function log(...parts: unknown[]): void {
   console.error('[umbriel-mcp]', ...parts);
 }
 
-/** Narrow an unknown JSON value to a property bag (mirrors the package's `(error as Error)` boundary). */
+/** Narrow an unknown JSON value to a property bag (an unknown→shape boundary helper). */
 function record(value: unknown): Record<string, unknown> {
   return typeof value === 'object' && value !== null ? (value as Record<string, unknown>) : {};
 }
@@ -846,7 +846,7 @@ async function captureTraceArtifacts(tool: string): Promise<TraceArtifacts> {
       await Bun.write(`${traceArtifactDir}/${file}`, lastSnapshotBody);
       artifacts.snapshot = file;
     } catch (error) {
-      log('trace snapshot write failed:', (error as Error).message);
+      log('trace snapshot write failed:', error instanceof Error ? error.message : String(error));
     }
   }
   if (attached !== null) {
@@ -858,7 +858,7 @@ async function captureTraceArtifacts(tool: string): Promise<TraceArtifacts> {
         artifacts.screenshot = file;
       }
     } catch (error) {
-      log('trace screenshot write failed:', (error as Error).message);
+      log('trace screenshot write failed:', error instanceof Error ? error.message : String(error));
     }
   }
   return artifacts;
@@ -885,7 +885,7 @@ async function traceCall(tool: string, args: Record<string, unknown>, result: ob
   try {
     await appendFile(tracePath, `${JSON.stringify(line)}\n`);
   } catch (error) {
-    log('trace write failed:', (error as Error).message);
+    log('trace write failed:', error instanceof Error ? error.message : String(error));
   }
 }
 /** Emit one forensic audit line to STDERR per tool call: {ts,tool,category,args(masked),ok,error}. Default-on for every
@@ -4022,7 +4022,7 @@ async function dispatch(request: JsonRpcRequest): Promise<void> {
       try {
         result = await HANDLERS[name]!(callArgs);
       } catch (error) {
-        result = errorResult((error as Error).message);
+        result = errorResult(error instanceof Error ? error.message : String(error));
       }
       auditCall(name, tool.category, callArgs, result);
       await traceCall(name, callArgs, result, traceArtifacts);

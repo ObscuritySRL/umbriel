@@ -63,7 +63,7 @@ export function execute(window: Element, actions: readonly AgentAction[]): Agent
       const value = performAgentAction(element, action); // cursor-free first (invoke / posted click / posted WM_CHAR)
       results.push({ action, ok: true, value });
     } catch (error) {
-      results.push({ action, ok: false, error: (error as Error).message });
+      results.push({ action, ok: false, error: error instanceof Error ? error.message : String(error) });
     } finally {
       element.release();
     }

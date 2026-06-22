@@ -258,7 +258,7 @@ export async function dispatch(window: Window, action: ComputerAction, options: 
         return { ok: false, error: `unknown action: ${action.action}` };
     }
   } catch (error) {
-    return { ok: false, error: (error as Error).message };
+    return { ok: false, error: error instanceof Error ? error.message : String(error) };
   }
 }
 
