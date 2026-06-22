@@ -382,6 +382,12 @@ export function pruneRefTree(node: RefNode): RefNode | null {
   const children: RefNode[] = [];
   for (const child of node.children) {
     if (isRow && child.children.length === 0 && child.role === 'Edit' && child.automationId !== undefined && READONLY_DISPLAY_COLUMNS.has(child.automationId)) continue;
+    // A leaf Text whose name exactly restates this parent's name is pure render duplication (a classic Button / ListItem
+    // emits a child Text mirroring its own label). Drop it from the RENDER only: it is non-actionable (ref === undefined,
+    // so resolveRef + screenshot_marked are unaffected — byRef/marks are built in walk() BEFORE pruning), and the parent
+    // line keeps node.name, so the string still appears exactly once. The automationId / ref gates keep any Text that
+    // could be a selector or action target.
+    if (child.role === 'Text' && child.ref === undefined && child.automationId === undefined && child.children.length === 0 && child.name.trim().length > 0 && child.name.trim() === node.name.trim()) continue;
     const kept = pruneRefTree(child);
     if (kept !== null) children.push(kept);
   }
