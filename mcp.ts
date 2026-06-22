@@ -623,9 +623,14 @@ function rebuildSnapshot(maxDepth?: number, root?: Element, maxNodes: number = S
   return { header: `### Snapshot (epoch ${epoch})${scope}: ${JSON.stringify(window.name)}`, tree: snapshot.tree };
 }
 
-/** Render a snapshot tree to the token-economical body an agent reads: pruned of ref-less noise, size-capped. */
+/** Render a snapshot tree to the token-economical body an agent reads: pruned of ref-less noise, secret-shapes masked,
+ *  size-capped. The whole snapshot — returned by EVERY withSnapshot action + desktop_snapshot — is the most frequent
+ *  on-screen read surface, and a non-password Edit/combo/list-item can hold a pasted API key (nodeState emits its
+ *  ValuePattern value, withholding only true IsPassword fields). Route it through the SAME redactSecrets every explicit
+ *  read verb (act read / inspect_element / ocr / click_text / read_clipboard) applies — this single render chokepoint
+ *  covers all callers so none can leak. Redact BEFORE the cap so a secret split across the size limit cannot survive. */
 function renderTree(tree: RefNode): string {
-  return capSnapshot(renderSnapshot(pruneRefTree(tree) ?? tree), SNAPSHOT_MAX_CHARS);
+  return capSnapshot(redactSecrets(renderSnapshot(pruneRefTree(tree) ?? tree)), SNAPSHOT_MAX_CHARS);
 }
 
 /** Stamp the current ref-generation onto every `[ref=eN]` token in AI-facing text (`[ref=eN#G]`). Applied only to
@@ -2727,7 +2732,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     return textResult(
       matched === null
         ? `text not present in this control: ${JSON.stringify(args.text)} — try a shorter / exact substring, mind case (ignoreCase:true), or it may be scrolled/virtualized off-screen (reveal it first)`
-        : `found and selected ${JSON.stringify(matched)} — the active text selection; type or paste over it to REPLACE just this match (NOT set_value, which overwrites the WHOLE control), or copy / read it`,
+        : `found and selected ${JSON.stringify(redactSecrets(matched))} — the active text selection; type or paste over it to REPLACE just this match (NOT set_value, which overwrites the WHOLE control), or copy / read it`,
     );
   },
   wait_for: async (args) => {

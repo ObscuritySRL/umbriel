@@ -27,3 +27,13 @@ test('click_text redacts the matched word and the nearest-words list (it OCRs th
   expect(mcp).not.toContain('JSON.stringify(hit.text)'); // never the raw matched OCR text to the model
   expect(mcp).not.toContain('.map((word) => word.text)'); // the nearest-on-no-match list is masked too
 });
+
+test('the snapshot render chokepoint redacts — the most frequent on-screen read surface (every withSnapshot + desktop_snapshot)', () => {
+  // a non-password Edit/combo/list-item holds a pasted key; nodeState emits its ValuePattern value, withholding only IsPassword.
+  // renderTree is the single tree→string boundary, so masking there covers every snapshot caller (none can be missed).
+  expect(mcp).toContain('capSnapshot(redactSecrets(renderSnapshot(');
+});
+
+test('find_text redacts the matched on-screen TextPattern text', () => {
+  expect(mcp).toContain('found and selected ${JSON.stringify(redactSecrets(matched))}');
+});
