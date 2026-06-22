@@ -1171,6 +1171,21 @@ function toggleSmart(element: Element, desired?: boolean): string {
   );
 }
 
+/** Select a control FOCUS-CLEAN (REPLACE mode only). A classic Win32 "Button" RADIO takes PostMessageW(BM_CLICK) — a
+ *  single replace-select, no foreground steal, works minimized/background (the invoke/toggle doctrine) — where UIA
+ *  SelectionItem.Select routes through the provider bridge's SetFocus and STEALS FOREGROUND to the control's own HWND
+ *  (findings/32; SELECT_STEAL_NOTE). A classic ListBox/ComboBox item is NOT class "Button" (BM_CLICK no-ops there) and
+ *  a no-own-HWND WinUI/WPF/Chromium item has only the UIA pattern — both fall through to disclosingPatternAct unchanged
+ *  (byte-identical to the prior path), so ONLY a classic radio gains the cursor-free path. add/remove keep the UIA path
+ *  (BM_CLICK has no add/remove equivalent). */
+function selectSmart(element: Element, message: string): string {
+  if (element.controlType === ControlType.RadioButton && isClassicButton(element)) {
+    postButtonClick(element.nativeWindowHandle);
+    return `${message} (BM_CLICK — focus-clean cursor-free select; UIA SelectionItem.Select would steal foreground)`;
+  }
+  return disclosingPatternAct(message, () => element.select(), undefined, SELECT_STEAL_NOTE);
+}
+
 /** Run an invoke/expand inside act() (find_and_act / reveal / grid_cell) and, if it opened a flyout/menu/dropdown in its
  *  OWN window, append that popup's hWnd — the same auto-return the dedicated invoke/expand tools give, so the one-call
  *  selector idiom does not leave the agent hand-hunting the popup. Synchronous check (these popups are created in the
@@ -1235,7 +1250,7 @@ function act(element: Element, action: string, text: string | undefined, submit 
     // SelectionItem add/remove/replace by name in one call (grid_cell{do:select} routes here too, mode-less → replace);
     // own-HWND classic items route through the bridge (foreground move disclosed), WinUI/WPF/Chromium stay cursor-free.
     const label = mode === 'add' ? 'added to selection' : mode === 'remove' ? 'removed from selection' : 'selected';
-    return patternAction('select', () => disclosingPatternAct(`${label} ${target}`, () => (mode === 'add' ? element.addToSelection() : mode === 'remove' ? element.removeFromSelection() : element.select()), undefined, SELECT_STEAL_NOTE));
+    return patternAction('select', () => (mode === 'add' ? disclosingPatternAct(`${label} ${target}`, () => element.addToSelection(), undefined, SELECT_STEAL_NOTE) : mode === 'remove' ? disclosingPatternAct(`${label} ${target}`, () => element.removeFromSelection(), undefined, SELECT_STEAL_NOTE) : selectSmart(element, `${label} ${target}`)));
   }
   throw new Error(`unknown action ${JSON.stringify(action)} — valid "do" verbs are: read, invoke, click, focus, type, set_value, toggle, expand, collapse, select.`);
 }
@@ -1355,7 +1370,7 @@ function clickElement(element: Element, button: 'left' | 'right' | 'middle', dou
         // not a TogglePattern control
       }
       try {
-        return disclosingPatternAct('selected (cursor-free)', () => element.select(), undefined, SELECT_STEAL_NOTE);
+        return selectSmart(element, 'selected (cursor-free)'); // classic radio → BM_CLICK (truly cursor-free); else the byte-identical UIA select + steal disclosure
       } catch {
         // not a SelectionItemPattern control — fall back to the posted coordinate click
       }
@@ -2805,7 +2820,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const target = named(element);
     const mode = args.mode === 'add' ? 'add' : args.mode === 'remove' ? 'remove' : 'replace';
     const label = mode === 'add' ? 'added to selection' : mode === 'remove' ? 'removed from selection' : 'selected';
-    const message = patternAction('select', () => disclosingPatternAct(`${label} ${target}`, () => (mode === 'add' ? element.addToSelection() : mode === 'remove' ? element.removeFromSelection() : element.select()), undefined, SELECT_STEAL_NOTE));
+    const message = patternAction('select', () => (mode === 'add' ? disclosingPatternAct(`${label} ${target}`, () => element.addToSelection(), undefined, SELECT_STEAL_NOTE) : mode === 'remove' ? disclosingPatternAct(`${label} ${target}`, () => element.removeFromSelection(), undefined, SELECT_STEAL_NOTE) : selectSmart(element, `${label} ${target}`)));
     return withSnapshot(message);
   },
   select_option: (args) => {
