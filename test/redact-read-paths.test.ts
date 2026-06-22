@@ -50,3 +50,12 @@ test('the echoed control NAME is redacted (named() + act() target — a list/tre
   expect(mcp).toContain('JSON.stringify(redactSecrets(element.name))'); // named() live path + act() target
   expect(mcp).toContain('JSON.stringify(redactSecrets(element.cachedName))'); // named() cached fast path
 });
+
+test('NO handler echoes a raw control name — every element/match/description/mark name reaching the model is redacted', () => {
+  // negative pin: any future `JSON.stringify(<control>.name)` without redactSecrets is an on-screen-content leak.
+  // (window.name = the window TITLE, app identity not field content, is intentionally NOT masked; node.name inside
+  // formatMsaa is covered by the formatMsaa OUTPUT wrap at the msaa_tree handler, so it is excluded here.)
+  for (const raw of ['JSON.stringify(element.name)', 'JSON.stringify(element.cachedName)', 'JSON.stringify(match.name)', 'JSON.stringify(description.name)', 'JSON.stringify(mark.name)']) {
+    expect(mcp).not.toContain(raw);
+  }
+});

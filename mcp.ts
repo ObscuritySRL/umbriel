@@ -1191,7 +1191,7 @@ function act(element: Element, action: string, text: string | undefined, submit 
     // "ignore previous instructions") — route it through the SAME redact+fence boundary read_clipboard/ocr enforce.
     return content.length > 0
       ? fenceUntrusted(`value: ${JSON.stringify(capText(redactSecrets(content)))}`, 'on-screen text')
-      : `(no readable value — control name is ${JSON.stringify(element.name)}; it may be empty or expose no Value/Text pattern — try inspect_element {ref} or read_table)`;
+      : `(no readable value — control name is ${JSON.stringify(redactSecrets(element.name))}; it may be empty or expose no Value/Text pattern — try inspect_element {ref} or read_table)`;
   }
   if (ACTIONABILITY_GATED.has(action)) assertActionable(element, action); // Playwright-class enabled gate before the mutating verb actually fires
   // Name the RESOLVED control in every result so an LLM gets target confirmation on an ambiguous selector match
@@ -2563,7 +2563,7 @@ const HANDLERS: Record<string, ToolHandler> = {
         return errorResult(
           `selector matched ${matches.length} controls — refusing to ${action} an ambiguous target. Narrow with automationId / controlType, or pass a specific ref:\n${matches
             .slice(0, 10)
-            .map((match) => `  - ${match.controlTypeName} ${JSON.stringify(match.name)}${match.automationId.length > 0 ? ` [automationId=${match.automationId}]` : ''} {x:${match.boundingRectangle.x},y:${match.boundingRectangle.y}}`)
+            .map((match) => `  - ${match.controlTypeName} ${JSON.stringify(redactSecrets(match.name))}${match.automationId.length > 0 ? ` [automationId=${match.automationId}]` : ''} {x:${match.boundingRectangle.x},y:${match.boundingRectangle.y}}`)
             .join('\n')}${matches.length > 10 ? `\n  … +${matches.length - 10} more` : ''}`,
         );
       const outcome = act(matches[0]!, action, typeof args.text === 'string' ? args.text : undefined, args.submit === true, args.mode === 'add' ? 'add' : args.mode === 'remove' ? 'remove' : 'replace');
@@ -3077,7 +3077,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     lastSnapshotBody = renderTree(current.tree);
     const marked = screenshotWithMarks(window, current);
     if (marked.png.length === 0) return errorResult('screenshot_marked was blank (locked session / PrintWindow); use screen_capture for the visible pixels and desktop_snapshot for the refs');
-    const legend = marked.marks.map((mark) => `[${mark.label}] ${mark.role} ${JSON.stringify(mark.name)} → ${mark.ref}#${refGen}`).join('\n');
+    const legend = marked.marks.map((mark) => `[${mark.label}] ${mark.role} ${JSON.stringify(redactSecrets(mark.name))} → ${mark.ref}#${refGen}`).join('\n'); // mark name is on-screen text — mask secrets like the snapshot
     return {
       content: [
         { type: 'image', data: Buffer.from(marked.png).toString('base64'), mimeType: 'image/png' },
@@ -3089,13 +3089,13 @@ const HANDLERS: Record<string, ToolHandler> = {
     const description = umbriel.elementAt(requireNumber(args, 'x'), requireNumber(args, 'y'));
     if (description === null) return textResult(`(no UI element at ${args.x},${args.y})`);
     return textResult(
-      `${description.role} ${JSON.stringify(description.name)}${description.automationId ? ` id=${description.automationId}` : ''} [class=${description.className}] {x:${description.bounds.x},y:${description.bounds.y} w:${description.bounds.width} h:${description.bounds.height}}`,
+      `${description.role} ${JSON.stringify(redactSecrets(description.name))}${description.automationId ? ` id=${description.automationId}` : ''} [class=${description.className}] {x:${description.bounds.x},y:${description.bounds.y} w:${description.bounds.width} h:${description.bounds.height}}`,
     );
   },
   inspect_element: (args) => {
     const element = resolveRef(requireString(args, 'ref'));
     const bounds = element.boundingRectangle;
-    const lines = [`${element.controlTypeName} ${JSON.stringify(element.name)}`];
+    const lines = [`${element.controlTypeName} ${JSON.stringify(redactSecrets(element.name))}`];
     if (element.automationId.length > 0) lines.push(`automationId: ${element.automationId}`);
     if (element.className.length > 0) lines.push(`className: ${element.className}`);
     lines.push(`bounds: {x:${bounds.x},y:${bounds.y} w:${bounds.width} h:${bounds.height}}`, `enabled: ${element.isEnabled}`);
@@ -3269,7 +3269,7 @@ const HANDLERS: Record<string, ToolHandler> = {
       const hwnd = handle !== 0n ? ` [hWnd=0x${handle.toString(16)}]` : '';
       const point = element.clickablePoint;
       const click = point !== null ? ` clickablePoint:${point.x},${point.y}` : '';
-      return textResult(`${element.controlTypeName} ${JSON.stringify(element.name)}${id}${cls} {x:${bounds.x},y:${bounds.y} w:${bounds.width} h:${bounds.height}}${click}${hwnd}`);
+      return textResult(`${element.controlTypeName} ${JSON.stringify(redactSecrets(element.name))}${id}${cls} {x:${bounds.x},y:${bounds.y} w:${bounds.width} h:${bounds.height}}${click}${hwnd}`); // mask secret shapes in the echoed name (on-screen text for a list/tree/text item)
     } finally {
       element.release();
     }
