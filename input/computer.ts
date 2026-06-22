@@ -7,8 +7,10 @@
 // that the computer-use literature attributes to screenshot-only grounding.
 
 import { ownerHwnd, postClickAt, postClickToHwnd, postDoubleClickAt, postDragToHwnd, postTripleClickAt, scrollAt } from './coords';
+import { captureWindowLive } from '../capture/wgc';
+import { encodePNG } from '../capture/png';
 import { focused, fromPoint, type Window } from '../element/element';
-import { foregroundWindow } from '../element/window';
+import { captureWindowRGB, foregroundWindow } from '../element/window';
 import { clickAt, cursorPosition, doubleClickAt, dragStroke, dragTo, holdKey, middleClickAt, mouseDown, mouseUp, moveTo, postHoldKey, postKey, postText, rightClickAt, scrollWheel, sendKeys, type as typeText } from './input';
 
 export interface ComputerAction {
@@ -141,8 +143,15 @@ export async function dispatch(window: Window, action: ComputerAction, options: 
   const [x, y] = action.coordinate ?? [0, 0];
   try {
     switch (action.action) {
-      case 'screenshot':
-        return { ok: true, screenshot: window.screenshot() };
+      case 'screenshot': {
+        // WGC-first (mirror Element.capture) so a GPU/occluded/background surface — the CUA target set — yields REAL
+        // pixels, not the blank/empty PrintWindow frame window.screenshot() returns for those windows. PrintWindow is the
+        // fallback only when WGC has no surface; both null (minimized/protected/off-screen) → honest ok:false, never the
+        // old silent ok:true + 0-byte PNG. (isNearUniform/captureWindowLiveWarm are mcp.ts-private — don't reach across.)
+        const frame = (await captureWindowLive(window.hWnd)) ?? captureWindowRGB(window.hWnd);
+        if (frame === null) return { ok: false, error: 'screenshot: the window has no capturable surface (minimized, protected/DRM, or off-screen) — restore/raise it, then retry' };
+        return { ok: true, screenshot: encodePNG(frame.rgb, frame.width, frame.height) };
+      }
       case 'cursor_position': {
         const point = cursorPosition();
         return { ok: true, output: `${point.x},${point.y}` };
