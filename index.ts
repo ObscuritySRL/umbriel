@@ -8,7 +8,7 @@ import { attach, focused, fromPoint, launch, root } from './element/element';
 import { killProcess, listProcesses, systemResources, waitForProcess, waitForProcessGone, waitForWindow, waitForWindowGone, watchWindows } from './desktop/events';
 import { waitForIdle } from './desktop/idle';
 import { clickAt, isKeyDown, postKey, postText, sendKeys, setControlText, type } from './input/input';
-import { locateOnScreen } from './capture/match';
+import { locateOnScreen, waitForVisualIdle } from './capture/match';
 import { msaaTree } from './element/msaa';
 import { ocrBitmap, ocrScreen, ocrWindow } from './capture/ocr';
 import { snapshot } from './element/refmap';
@@ -16,7 +16,6 @@ import { captureScreen, pixelColor, screenshotScreen } from './capture/screen';
 import { windowTree } from './desktop/spy';
 import { serialize } from './element/tree';
 import { captureWindowLive } from './capture/wgc';
-import { waitForVisualIdle } from './capture/match';
 import { listWindows } from './element/window';
 
 /** The Playwright-for-desktop facade: attach to a window, then find/waitFor/act/serialize. */
