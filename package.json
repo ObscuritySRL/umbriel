@@ -21,7 +21,7 @@
     "@bun-win32/user32": "^3.0.22",
     "@bun-win32/windowsaccessbridge-64": "^1.0.0"
   },
-  "description": "Playwright for the Windows desktop, from Bun — drive the UI Automation accessibility tree (find by name, invoke, type, assert), plus synthetic input, full-screen capture + image matching, native-window introspection (Spy++-style), an LLM computer-use adapter, and an MCP server. Zero native dependencies, no node-gyp, no server.",
+  "description": "See and drive an entire Windows machine from Bun — not just app GUIs. Inspect kernel-to-pixels and act on any app through the UI Automation tree, synthetic input, screen capture + OCR, Spy++-style introspection, registry, and OS/filesystem reach — all via a security-gated MCP server. Pure TypeScript over bun:ffi: zero native deps, no build step.",
   "devDependencies": {
     "@types/bun": "latest"
   },
@@ -49,7 +49,7 @@
     "url": "git+https://github.com/ObscuritySRL/umbriel.git"
   },
   "type": "module",
-  "version": "1.11.1",
+  "version": "1.12.0",
   "main": "./index.ts",
   "keywords": [
     "accessibility",
