@@ -57,11 +57,17 @@ export interface ScrollInfo {
   verticallyScrollable: boolean;
 }
 
+// Reused scratch for the pattern-pointer out-parameter — getPattern reads the result out synchronously before
+// returning (no await between the vcall and the read), so a single module-scoped buffer is alias-safe and skips
+// the per-call Buffer.alloc(8) + .ptr FFI registration (~200 ns/call, measured) that every one of the ~40
+// getPattern call sites paid. Distinct from reads.ts's own module scratch8 (private there), mirroring element.ts's
+// per-module scratch convention.
+const patternOut = Buffer.alloc(8);
+
 /** Acquire a control pattern interface. Returns 0n when the element does not support it. */
 function getPattern(ptr: bigint, patternId: number): bigint {
-  const out = Buffer.alloc(8);
-  if (vcall(ptr, SLOT.GetCurrentPattern, [FFIType.i32, FFIType.ptr], [patternId, out.ptr!]) !== S_OK) return 0n;
-  return out.readBigUInt64LE(0);
+  if (vcall(ptr, SLOT.GetCurrentPattern, [FFIType.i32, FFIType.ptr], [patternId, patternOut.ptr!]) !== S_OK) return 0n;
+  return patternOut.readBigUInt64LE(0);
 }
 
 function invokeNoArg(pattern: bigint, slot: number, label: string): void {
