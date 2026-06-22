@@ -1596,6 +1596,35 @@ const TOOLS: McpTool[] = [
     },
   },
   {
+    name: 'act_batch',
+    category: 'input',
+    description:
+      'Run several act steps against the attached window in ONE call, rebuilding the snapshot just ONCE at the end instead of after every step — for filling a multi-field form or driving a short sequence (5 fields = 1 round-trip + 1 tree rebuild, not 5 + 5). {steps} is an array of { selector, do, text?, submit?, mode?, timeout? }; do ∈ invoke|click|type|set_value|toggle|expand|collapse|select|focus|read and selector is the same shape as find_and_act. SELECTOR-ONLY (no per-step ref — a ref goes stale once an earlier step mutates the tree, so each step re-resolves against the LIVE window; a step needing a control an earlier step revealed just selects it by name). Each step Playwright-auto-waits for actionability (per-step {timeout}, default 2s) and refuses an ambiguous selector. {stopOnError} (default true) halts at the first failing step and STILL returns the final snapshot; false attempts every step. A step that opens a modal dialog should be LAST (it moves foreground). Returns numbered per-step ✓/✗ outcomes + the single final snapshot.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        steps: {
+          type: 'array',
+          description: 'Steps run in order against the attached window',
+          items: {
+            type: 'object',
+            properties: {
+              selector: SELECTOR_SCHEMA,
+              do: { type: 'string', enum: ['invoke', 'click', 'type', 'set_value', 'toggle', 'expand', 'collapse', 'select', 'focus', 'read'] },
+              text: { type: 'string', description: 'Text for type / set_value' },
+              submit: { type: 'boolean', description: 'Press Enter after a type' },
+              mode: { type: 'string', enum: ['replace', 'add', 'remove'], description: 'For do:select only' },
+              timeout: { type: 'number', description: 'Per-step actionability budget in ms (default 2000; 0 = no wait)' },
+            },
+            required: ['selector', 'do'],
+          },
+        },
+        stopOnError: { type: 'boolean', description: 'Halt at the first failing step (default true); false attempts every step' },
+      },
+      required: ['steps'],
+    },
+  },
+  {
     name: 'reveal',
     category: 'input',
     description:
@@ -2596,6 +2625,49 @@ const HANDLERS: Record<string, ToolHandler> = {
     } finally {
       for (const match of matches) match.release();
     }
+  },
+  act_batch: async (args) => {
+    if (!Array.isArray(args.steps) || args.steps.length === 0) return errorResult('act_batch: provide {steps} — a non-empty array of { selector, do, text?, submit?, mode?, timeout? }');
+    const stopOnError = args.stopOnError !== false; // default true: halt at the first failing step (still snapshot)
+    requireAttached(); // fail fast if nothing is attached
+    const baseline = current?.marks.length ?? 0; // captured before any step so a trailing expand settles for items revealed across the batch
+    const outcomes: string[] = [];
+    let lastAction = 'read'; // only a trailing 'expand' makes the final snapshot diverge from withSnapshot
+    let halted = false;
+    for (let index = 0; index < args.steps.length; index += 1) {
+      const step = record(args.steps[index]);
+      let matches: Element[] = [];
+      try {
+        const action = requireString(step, 'do');
+        const selector = selectorFrom(step.selector); // SELECTOR-ONLY: no per-step ref (stale after a mid-batch mutation), so no resolveRef and no snapshot-owned Element held → no UAF
+        const mode = step.mode === 'add' ? 'add' : step.mode === 'remove' ? 'remove' : 'replace';
+        const waitBudget = typeof step.timeout === 'number' ? Math.max(0, step.timeout) : ACT_WAIT_DEFAULT_MS;
+        const gated = action !== 'read' && ACTIONABILITY_GATED.has(action);
+        matches = requireAttached().findAll(selector);
+        const ready = (): boolean => matches.length > 0 && (!gated || matches.length > 1 || matches[0]!.isEnabled);
+        if (!ready() && waitBudget > 0) {
+          const start = Bun.nanoseconds();
+          while (!ready() && (Bun.nanoseconds() - start) / 1e6 < waitBudget) {
+            await Bun.sleep(ACT_WAIT_INTERVAL_MS);
+            for (const match of matches) match.release(); // release the prior resolution before re-querying (each findAll AddRefs)
+            matches = requireAttached().findAll(selector); // re-resolve the window each poll: a re-render can swap the attached Element out
+          }
+        }
+        if (matches.length === 0) throw new Error(requireAttached().describeNoMatch(selector));
+        if (matches.length > 1 && action !== 'read') throw new Error(`selector matched ${matches.length} controls — refusing to ${action} an ambiguous target; narrow with automationId / controlType`);
+        const outcome = act(matches[0]!, action, typeof step.text === 'string' ? step.text : undefined, step.submit === true, mode);
+        outcomes.push(`${index + 1}. ✓ ${outcome}`);
+        lastAction = action;
+      } catch (error) {
+        outcomes.push(`${index + 1}. ✗ ${redactSecrets(error instanceof Error ? error.message : String(error))}`); // redact: a step error can embed a live control name / typed value
+        if (stopOnError) halted = true;
+      } finally {
+        for (const match of matches) match.release();
+      }
+      if (halted) break;
+    }
+    const summary = `act_batch: ${outcomes.length} step(s)${halted ? ' — halted at the first failure (stopOnError; pass stopOnError:false to attempt all)' : ''}\n${outcomes.join('\n')}`;
+    return withActSnapshot(lastAction, summary, baseline);
   },
   reveal: (args) => {
     rejectElementOnlyTarget(args);
