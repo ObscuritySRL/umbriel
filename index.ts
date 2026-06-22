@@ -111,7 +111,7 @@ export { listVolumes, type VolumeInfo } from './desktop/disk';
 export { createTask, deleteTask, listScheduledTasks, type ScheduledTask, TASK_SLOT } from './desktop/tasks';
 export { FIREWALL_SLOT, type FirewallRule, listFirewallRules } from './desktop/firewall';
 export { type AdapterInfo, type Connection, listAdapters, listConnections } from './desktop/network';
-export { enableShutdownPrivilege, type PowerAction, powerState } from './desktop/power';
+export { activePowerPlan, enableShutdownPrivilege, type PowerAction, powerState } from './desktop/power';
 export { type IdleOptions, waitForIdle } from './desktop/idle';
 export { isJavaWindow, javaInvoke, type JavaNode, javaSetText, type JavaTarget, javaTree, renderJavaTree } from './element/jab';
 export {

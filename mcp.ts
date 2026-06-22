@@ -39,6 +39,7 @@ import {
   listEnv,
   setEnv,
   parseScope,
+  activePowerPlan,
   powerState,
   processInfo,
   currentUser,
@@ -2769,7 +2770,13 @@ const HANDLERS: Record<string, ToolHandler> = {
       status.screenSaverRunning ? '⚠ a screensaver is running — the display is blanked (apps still run, but a pixel capture may be black)' : null,
       status.monitors === 0 ? '⚠ no monitors attached (headless) — captures may be blank' : null,
     ].filter((warning): warning is string => warning !== null);
-    const notes = [status.remoteSession ? 'remote (RDP) session' : null, status.onBattery ? 'on battery (idle sleep / display-off may be enabled)' : null].filter((note): note is string => note !== null);
+    const battery = status.hasBattery
+      ? `battery ${status.batteryPercent ?? '?'}%${status.batteryCharging ? ' charging' : status.onBattery ? ' on battery' : ''}${!status.batteryCharging && status.batterySecondsRemaining !== null ? ` (~${Math.floor(status.batterySecondsRemaining / 60)}m left)` : ''}${status.batterySaver ? ', saver on' : ''}`
+      : status.onBattery
+        ? 'on battery (idle sleep / display-off may be enabled)'
+        : null;
+    const plan = activePowerPlan();
+    const notes = [status.remoteSession ? 'remote (RDP) session' : null, battery, plan !== null ? `power plan ${JSON.stringify(plan)}` : null].filter((note): note is string => note !== null);
     return textResult(`system: input desktop ${JSON.stringify(status.inputDesktop)}, ${status.monitors} monitor(s)${notes.length > 0 ? `, ${notes.join(', ')}` : ''}; foreground ${JSON.stringify(status.foreground)}\n${warnings.length > 0 ? warnings.join('\n') : 'nominal — the desktop is interactive and readable'}`);
   },
   system_resources: async (args) => {
