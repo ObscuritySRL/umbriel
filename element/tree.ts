@@ -87,8 +87,15 @@ function walk(element: Element, options: SerializeOptions, maxDepth: number, dep
         break;
       }
       budget.remaining -= 1;
-      const childNode = walk(child, options, maxDepth, depth + 1, request, budget);
-      const next = child.nextSiblingCached(request);
+      let childNode: UiaNode | null;
+      let next: Element | null;
+      try {
+        childNode = walk(child, options, maxDepth, depth + 1, request, budget);
+        next = child.nextSiblingCached(request);
+      } catch (error) {
+        child.release(); // release the in-flight child on ANY fault between materialization and its release — a torn-down proxy throws via the vcall null-vtable guard; without this it (plus one per recursion level) leaks
+        throw error;
+      }
       child.release();
       if (childNode !== null) node.children.push(childNode);
       child = next;
