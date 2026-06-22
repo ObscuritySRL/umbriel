@@ -3564,14 +3564,17 @@ const HANDLERS: Record<string, ToolHandler> = {
     const element = resolveRef(requireString(args, 'ref'));
     const action = requireString(args, 'action');
     if (action === 'move') {
+      if (typeof args.x !== 'number' || typeof args.y !== 'number') throw new Error('manage_element action:"move" needs {x, y} (the new top-left, cursor-free via TransformPattern)');
       element.move(requireNumber(args, 'x'), requireNumber(args, 'y'));
       return withSnapshot(`moved ${named(element)} to ${args.x},${args.y} cursor-free (TransformPattern)`);
     }
     if (action === 'resize') {
+      if (typeof args.width !== 'number' || typeof args.height !== 'number') throw new Error('manage_element action:"resize" needs {width, height} (the new size, cursor-free via TransformPattern)');
       element.resize(requireNumber(args, 'width'), requireNumber(args, 'height'));
       return withSnapshot(`resized ${named(element)} to ${args.width}×${args.height} cursor-free (TransformPattern)`);
     }
     if (action === 'rotate') {
+      if (typeof args.degrees !== 'number') throw new Error('manage_element action:"rotate" needs {degrees} (cursor-free via TransformPattern)');
       element.rotate(requireNumber(args, 'degrees'));
       return withSnapshot(`rotated ${named(element)} by ${args.degrees}° cursor-free (TransformPattern)`);
     }
@@ -3598,8 +3601,13 @@ const HANDLERS: Record<string, ToolHandler> = {
     else if (action === 'raise') raiseWindow(hWnd);
     else if (action === 'topmost') setTopmost(hWnd, true);
     else if (action === 'untopmost') setTopmost(hWnd, false);
-    else if (action === 'set_opacity') setOpacity(hWnd, requireNumber(args, 'alpha'));
-    else if (action === 'move') moveWindow(hWnd, requireNumber(args, 'x'), requireNumber(args, 'y'), requireNumber(args, 'width'), requireNumber(args, 'height'));
+    else if (action === 'set_opacity') {
+      if (typeof args.alpha !== 'number') throw new Error('manage_window action:"set_opacity" needs {alpha} 0–255 (layered-window transparency)');
+      setOpacity(hWnd, requireNumber(args, 'alpha'));
+    } else if (action === 'move') {
+      if (typeof args.x !== 'number' || typeof args.y !== 'number' || typeof args.width !== 'number' || typeof args.height !== 'number') throw new Error('manage_window action:"move" needs all of {x, y, width, height} (it repositions AND resizes in one call — there is no separate resize action)');
+      moveWindow(hWnd, requireNumber(args, 'x'), requireNumber(args, 'y'), requireNumber(args, 'width'), requireNumber(args, 'height'));
+    }
     else if (action === 'snap') {
       const edge = requireString(args, 'edge');
       if (edge !== 'left' && edge !== 'right' && edge !== 'top' && edge !== 'bottom' && edge !== 'center') throw new Error(`snap edge must be left/right/top/bottom/center, got ${JSON.stringify(edge)}`);
