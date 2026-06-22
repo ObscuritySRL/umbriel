@@ -369,6 +369,11 @@ export interface SystemStatus {
   remoteSession: boolean; // driven over an RDP / Terminal Services session
   screenSaverRunning: boolean; // a screensaver has blanked the display
   onBattery: boolean; // running on battery (idle sleep / display-off may be enabled) rather than AC
+  hasBattery: boolean; // a system battery is present (false on a desktop / when power status is unknown)
+  batteryPercent: number | null; // charge 0..100, or null when unknown / no battery
+  batteryCharging: boolean; // the battery is charging (BatteryFlag bit 0x08)
+  batterySecondsRemaining: number | null; // estimated runtime left on battery; null on AC / charging / unknown
+  batterySaver: boolean; // Windows battery-saver is on (SystemStatusFlag bit 0, Win10+)
   monitors: number; // attached display count (0 = headless / no render surface — captures may be blank)
   foreground: string; // the active window's title ('' if none)
 }
@@ -385,15 +390,25 @@ const SPI_GETSCREENSAVERRUNNING = 0x0072;
 export function systemStatus(): SystemStatus {
   const running = Buffer.alloc(4);
   const screenSaverRunning = User32.SystemParametersInfoW(SPI_GETSCREENSAVERRUNNING, 0, running.ptr!, 0) !== 0 && running.readUInt32LE(0) !== 0;
-  const power = Buffer.alloc(12); // SYSTEM_POWER_STATUS: BYTE ACLineStatus@0, BatteryFlag@1, BatteryLifePercent@2, …
-  const onBattery = Kernel32.GetSystemPowerStatus(power.ptr!) !== 0 && power.readUInt8(0) === 0; // ACLineStatus 0 = battery (1 = AC, 255 = unknown)
+  // SYSTEM_POWER_STATUS (12 B): BYTE ACLineStatus@0, BatteryFlag@1, BatteryLifePercent@2, SystemStatusFlag@3, DWORD BatteryLifeTime@4.
+  const power = Buffer.alloc(12);
+  const powerOk = Kernel32.GetSystemPowerStatus(power.ptr!) !== 0;
+  const batteryFlag = powerOk ? power.readUInt8(1) : 0xff;
+  const hasBattery = powerOk && (batteryFlag & 0x80) === 0 && batteryFlag !== 0xff; // 0x80 = no system battery; 0xFF = unknown
+  const percentRaw = power.readUInt8(2);
+  const secondsRaw = power.readUInt32LE(4);
   const fg = foregroundWindow();
   return {
     inputDesktop: inputDesktopName(),
     secureDesktop: isSecureDesktopActive(),
     remoteSession: User32.GetSystemMetrics(SM_REMOTESESSION) !== 0,
     screenSaverRunning,
-    onBattery,
+    onBattery: powerOk && power.readUInt8(0) === 0, // ACLineStatus 0 = battery (1 = AC, 255 = unknown)
+    hasBattery,
+    batteryPercent: hasBattery && percentRaw !== 255 ? percentRaw : null,
+    batteryCharging: hasBattery && (batteryFlag & 0x08) !== 0,
+    batterySecondsRemaining: hasBattery && secondsRaw !== 0xffff_ffff ? secondsRaw : null,
+    batterySaver: powerOk && power.readUInt8(3) === 1, // SystemStatusFlag bit 0 — battery saver (Win10+)
     monitors: User32.GetSystemMetrics(SM_CMONITORS),
     foreground: fg !== 0n ? readWindowText(fg) : '',
   };
