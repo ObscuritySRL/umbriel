@@ -2376,6 +2376,12 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { path: { type: 'string' } }, required: ['path'] },
   },
   {
+    name: 'find_files',
+    category: 'fs',
+    description: 'Find files recursively by glob under {dir} in ONE call — no `dir /s` / `where` / `Get-ChildItem -Recurse` shell, and no fan-out of list_dir per subdirectory. {pattern} is a glob: "**/*.json" (recursive), "config.*", "src/**/*.ts". Returns matching absolute paths; {includeDirs:true} also MATCHES directories, {limit} caps results (default 200, max 1000). Restricted to UMBRIEL_FS_ROOT when set — every hit is re-validated against the sandbox root and matches that resolve outside it are dropped (counted in a footer).',
+    inputSchema: { type: 'object', properties: { dir: { type: 'string', description: 'Directory to search under (the glob is relative to it)' }, pattern: { type: 'string', description: 'Glob pattern, e.g. "**/*.json" or "config.*"' }, limit: { type: 'number', description: 'Max results (default 200, max 1000)' }, includeDirs: { type: 'boolean', description: 'Also match directories (default false — files only)' } }, required: ['dir', 'pattern'] },
+  },
+  {
     name: 'stat_path',
     category: 'fs',
     description: 'Stat a path natively (no dir/Get-Item shell): whether it exists, file vs directory, byte size, modified + created times, and the Windows attribute flags (read-only / hidden / system / reparse-point). Check a file\'s size BEFORE read_file (which caps at 20k chars). Restricted to UMBRIEL_FS_ROOT when set.',
@@ -2412,7 +2418,7 @@ const TOOLS: McpTool[] = [
 const IDEMPOTENT = new Set(['copy', 'java_set_text', 'manage_element', 'set_clipboard', 'set_value']);
 // Tools that READ state without mutating it but are NOT in the 'read' category (read_clipboard is gated as
 // 'input' so readonly does not auto-expose the secret-bearing clipboard) — they still earn readOnlyHint, not destructive.
-const READ_ONLY_NATURE = new Set(['read_clipboard']);
+const READ_ONLY_NATURE = new Set(['read_clipboard', 'find_files']);
 for (const tool of TOOLS) {
   const readOnly = tool.category === 'read' || READ_ONLY_NATURE.has(tool.name);
   tool.annotations = { openWorldHint: tool.category === 'os', ...(readOnly ? { readOnlyHint: true } : { destructiveHint: true }), ...(IDEMPOTENT.has(tool.name) ? { idempotentHint: true } : {}) };
@@ -4013,6 +4019,32 @@ const HANDLERS: Record<string, ToolHandler> = {
   list_dir: async (args) => {
     const entries = await readdir(resolveFsPath(requireString(args, 'path')), { withFileTypes: true });
     return textResult(entries.map((entry) => `${entry.isDirectory() ? 'd' : '-'} ${entry.name}`).join('\n') || '(empty directory)');
+  },
+  find_files: (args) => {
+    const root = resolveFsPath(requireString(args, 'dir'));
+    const pattern = requireString(args, 'pattern');
+    const limit = typeof args.limit === 'number' && args.limit > 0 ? Math.min(args.limit, 1000) : 200;
+    const hits: string[] = [];
+    let dropped = 0; // matches resolving OUTSIDE UMBRIEL_FS_ROOT (a `..`/absolute pattern escapes cwd) — counted, never silently hidden
+    let truncated = false;
+    try {
+      for (const rel of new Bun.Glob(pattern).scanSync({ cwd: root, onlyFiles: args.includeDirs !== true })) {
+        if (hits.length >= limit) {
+          truncated = true; // at least one more match exists past the cap — bounded scan, no full-tree walk
+          break;
+        }
+        try {
+          hits.push(resolveFsPath(resolve(root, rel))); // per-hit sandbox re-validation — load-bearing, do NOT optimize away
+        } catch {
+          dropped += 1;
+        }
+      }
+    } catch (error) {
+      return errorResult(fsError('find_files', error)); // scanSync throws lazily (first iteration) on a missing/denied dir
+    }
+    const footer = [truncated ? `(more matches past the limit of ${limit} — raise {limit} or narrow {pattern})` : '', dropped > 0 ? `(${dropped} match(es) outside the sandbox root were filtered out)` : ''].filter((part) => part.length > 0).join(' ');
+    const body = [hits.join('\n'), footer].filter((part) => part.length > 0).join('\n') || '(no matches)';
+    return textResult(fenceUntrusted(body, 'file list'));
   },
   stat_path: (args) => {
     const path = resolveFsPath(requireString(args, 'path'));
