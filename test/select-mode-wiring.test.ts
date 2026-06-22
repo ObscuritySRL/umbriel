@@ -8,11 +8,12 @@ import { expect, test } from 'bun:test';
 // keeps every existing act() caller byte-identical.
 const mcp = await Bun.file(`${import.meta.dir}/../mcp.ts`).text();
 
-test('act() takes a mode param (default replace) and its select branch dispatches add/remove/replace', () => {
+test('act() takes a mode param (default replace) and its select branch routes add/remove → UIA, replace → selectSmart', () => {
   expect(mcp).toContain("mode: 'replace' | 'add' | 'remove' = 'replace'"); // act() signature, default keeps callers byte-identical
-  const dispatch = "mode === 'add' ? element.addToSelection() : mode === 'remove' ? element.removeFromSelection() : element.select()";
-  // appears in BOTH the act() select branch and the dedicated select handler — same dispatch, same disclosure path
-  expect(mcp.split(dispatch).length - 1).toBeGreaterThanOrEqual(2);
+  // add/remove keep the UIA disclosingPatternAct path; replace routes through selectSmart (classic-radio BM_CLICK,
+  // else the byte-identical UIA select) — the SAME dispatch in BOTH the act() select branch and the select handler.
+  const dispatch = "mode === 'add' ? disclosingPatternAct(`${label} ${target}`, () => element.addToSelection(), undefined, SELECT_STEAL_NOTE) : mode === 'remove' ? disclosingPatternAct(`${label} ${target}`, () => element.removeFromSelection(), undefined, SELECT_STEAL_NOTE) : selectSmart(element, `${label} ${target}`)";
+  expect(mcp.split(dispatch).length - 1).toBe(2);
 });
 
 test('find_and_act and reveal thread the normalized mode through to act(); the enum is in both schemas', () => {
