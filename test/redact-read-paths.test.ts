@@ -45,3 +45,8 @@ test('the snapshot DIFF fast-path + the MSAA / Java / native tree renderers reda
   expect(mcp).toContain('redactSecrets(renderJavaTree(tree))'); // java_tree + javaObservation (java_invoke/java_set_text)
   expect(mcp).toContain('redactSecrets(renderWindowTree('); // native_tree (window text)
 });
+
+test('the echoed control NAME is redacted (named() + act() target — a list/tree/text item name is on-screen text)', () => {
+  expect(mcp).toContain('JSON.stringify(redactSecrets(element.name))'); // named() live path + act() target
+  expect(mcp).toContain('JSON.stringify(redactSecrets(element.cachedName))'); // named() cached fast path
+});
