@@ -567,6 +567,14 @@ function resolveHwnd(args: Record<string, unknown>): bigint {
   return requireAttached().hWnd;
 }
 
+/** A capture region {x,y,width,height} from the args (each field carried only when a number), or undefined when no
+ *  region coord is present — the shared extractor the five region-capable tools (screen_capture / find_image /
+ *  find_color / copy_image / wait_visual_idle) built identically. Returns Partial<Rect>, the region? param shape. */
+function regionArg(args: Record<string, unknown>): { x?: number; y?: number; width?: number; height?: number } | undefined {
+  if (typeof args.x !== 'number' && typeof args.y !== 'number' && typeof args.width !== 'number' && typeof args.height !== 'number') return undefined;
+  return { x: typeof args.x === 'number' ? args.x : undefined, y: typeof args.y === 'number' ? args.y : undefined, width: typeof args.width === 'number' ? args.width : undefined, height: typeof args.height === 'number' ? args.height : undefined };
+}
+
 const SNAPSHOT_COLD_REFS = 5; // a Chromium window with web roots but fewer refs than this is a cold / torn-down a11y tree
 const SNAPSHOT_WARMUP_MAX = 6; // bounded re-queries to warm a cold Chromium tree
 const SNAPSHOT_WARMUP_INTERVAL = 200; // ms between warm-up re-queries
@@ -2789,7 +2797,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const label = (settled: boolean): string => (settled ? `pixels settled (no change > ±${tolerance} for ${quietMs}ms)` : 'pixels still animating at timeout');
     // FG path: an explicit region with no window target → BitBlt that region of the live desktop.
     if ((typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number') && hwndArg(args) === undefined && typeof args.ref !== 'string') {
-      const region = { x: typeof args.x === 'number' ? args.x : undefined, y: typeof args.y === 'number' ? args.y : undefined, width: typeof args.width === 'number' ? args.width : undefined, height: typeof args.height === 'number' ? args.height : undefined };
+      const region = regionArg(args)!; // the guard above already asserted at least one region coord is a number
       return textResult(label(await umbriel.waitForVisualIdle(() => umbriel.captureScreen(region), options)));
     }
     // BG path: the {hWnd}/{ref}/attached window via occlusion-correct WGC.
@@ -3026,24 +3034,13 @@ const HANDLERS: Record<string, ToolHandler> = {
     return imageResult(encodePNG(live.rgb, live.width, live.height), `(${originNote(live.originX, live.originY, live.width, live.height)})`);
   },
   screen_capture: (args) => {
-    const region =
-      typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number'
-        ? {
-            x: typeof args.x === 'number' ? args.x : undefined,
-            y: typeof args.y === 'number' ? args.y : undefined,
-            width: typeof args.width === 'number' ? args.width : undefined,
-            height: typeof args.height === 'number' ? args.height : undefined,
-          }
-        : undefined;
+    const region = regionArg(args);
     return imageResult(umbriel.screenshotScreen(region));
   },
   find_image: (args) => {
     const decoded = decodePNG(new Uint8Array(Buffer.from(requireString(args, 'image'), 'base64'))); // throws on a bad/unsupported PNG → top-level catch → errorResult
     const needle = { ...decoded, originX: 0, originY: 0 };
-    const region =
-      typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number'
-        ? { x: typeof args.x === 'number' ? args.x : undefined, y: typeof args.y === 'number' ? args.y : undefined, width: typeof args.width === 'number' ? args.width : undefined, height: typeof args.height === 'number' ? args.height : undefined }
-        : undefined;
+    const region = regionArg(args);
     const threshold = typeof args.threshold === 'number' ? args.threshold : undefined;
     if (args.all === true) {
       const matches = locateAllOnScreen(needle, { threshold, region });
@@ -3061,10 +3058,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const g = requireNumber(args, 'g');
     const b = requireNumber(args, 'b');
     const tolerance = typeof args.tolerance === 'number' ? args.tolerance : 0;
-    const region =
-      typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number'
-        ? { x: typeof args.x === 'number' ? args.x : undefined, y: typeof args.y === 'number' ? args.y : undefined, width: typeof args.width === 'number' ? args.width : undefined, height: typeof args.height === 'number' ? args.height : undefined }
-        : undefined;
+    const region = regionArg(args);
     const hit = locateColor({ r, g, b }, tolerance, region);
     return hit === null
       ? errorResult(`find_color: no pixel within ±${tolerance} of rgb(${r},${g},${b})${region ? ' in region' : ' on screen'}`)
@@ -3542,13 +3536,9 @@ const HANDLERS: Record<string, ToolHandler> = {
   },
   set_clipboard: (args) => textResult(umbriel.writeClipboard(requireString(args, 'text')) ? 'clipboard set' : 'failed to set clipboard'),
   copy_image: async (args) => {
-    if (typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number') {
-      const bitmap = umbriel.captureScreen({
-        x: typeof args.x === 'number' ? args.x : undefined,
-        y: typeof args.y === 'number' ? args.y : undefined,
-        width: typeof args.width === 'number' ? args.width : undefined,
-        height: typeof args.height === 'number' ? args.height : undefined,
-      });
+    const region = regionArg(args);
+    if (region !== undefined) {
+      const bitmap = umbriel.captureScreen(region);
       return umbriel.writeClipboardImage(bitmap)
         ? textResult(`copied a ${bitmap.width}×${bitmap.height} screen image to the clipboard — paste it (Ctrl+V / the paste tool) into the target app`)
         : errorResult('copy_image: could not set the clipboard image');
