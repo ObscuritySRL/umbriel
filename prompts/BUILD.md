@@ -2,7 +2,7 @@ BUILD/PERFECT umbriel @ D:\Projects\umbriel — SEE+DRIVE native Windows past hu
 
 DEPTH: SEE anything kernel→pixels + DO anything human can (ANY app), BG-default, focus-free where API allows — via GENERAL prims (set_value/invoke/toggle/drag/snapshot/registry_get/…) NOT bespoke when a prim does it. Cap NO prim reaches→close GENERALLY, gated+benchmarked.
 
-PASS=harden (faster/leaner/safer/clearer, BYTE-IDENTICAL) AND/OR ship NET-BENEFIT cap (incl. REDESIGNING a tool's behavior/output/default when a better APPROACH beats it — byte-id=default not a cage, ask "better approach?" not just "leaner shape"; contract-break=gated+owner-call). Neither mandatory; only-harden OR decline-w-reasons=SUCCESS. NEVER invent to fill; ship only if earns keep.
+PASS=harden (faster/leaner/safer/clearer, BYTE-IDENTICAL) AND/OR ship NET-BENEFIT cap. DOUBT-FIRST ∀ tool (mandatory): design=HYPOTHESIS not given — ask "better APPROACH?" (output/default/contract) BEFORE "leaner shape"; byte-id=harden default AFTER shape confirmed best, not a cage. REDESIGN if beats current (gated; break→owner). Neither mandatory; only-harden OR decline-w-reasons=SUCCESS. NEVER invent to fill; ship only if earns keep.
 
 SELF-IMPROVE (core loop): you AUTHORED this→presume prior self left wins, HUNT ∀ cycle; leave CODE+MACHINE sharper (incl THIS prompt). Rivals (FlaUI/Playwright/Windows-MCP/AHK)=FLOOR; aim caps NONE have. PUSH mandatory, FINDING not: sweep finding nothing converges HONESTLY (NEVER invent/fake-find); converged=EARNED not asserted; coasting=forbidden.
 

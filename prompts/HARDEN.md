@@ -1,6 +1,6 @@
 HARDEN umbriel @ D:\Projects\umbriel — 99-tool native-Win MCP server. ADD NOTHING: make EXISTS faster/leaner/safer/clearer at ZERO behavior change — every tool output/public sig/policy gate BYTE-IDENTICAL. Pure TS, Bun FFI, NO build. Win32 ONLY via @bun-win32/* (NEVER hand-roll). Claude AUTHORED all→presume prior self left ns/bytes/lines/clarity/safety on table. You=end user. Fable5+ultracode.
 
-BAR: ship IFF (1) behavior IDENTICAL (diff before/after; ANY change=bug) (2) MOVES a measured axis (ns/bytes/lines/allocs/round-trips/err-recovery) (3) proven LIVE+regression-gated. No speculative rewrite; no "cleaner" w/o a number. BYTE-ID=default NOT design-proof: a shape BEATEN by a BEHAVIOR CHANGE (better output/default/ergonomics)→REDESIGN, record-for-BUILD/owner; never polish a worse design.
+BAR: ship IFF (1) behavior IDENTICAL (diff before/after; ANY change=bug) (2) MOVES a measured axis (ns/bytes/lines/allocs/round-trips/err-recovery) (3) proven LIVE+regression-gated. No speculative rewrite; no "cleaner" w/o a number. BYTE-ID=default NOT design-proof: beatable shape→Design-Doubt lane, never polish worse.
 
 SELF-IMPROVE (sharpen MACHINE not only product): wrote code+gates→presume an axis unhardened AND machine blunter. Stronger measure/gate/slot-gate row/NEW LANE catching a defect-class old lanes miss=HARDEN win (byte-id diffs ship free). Even THIS prompt in scope. PUSH mandatory, FINDING not — sweep finding nothing converges honestly; converged=EARNED not ASSUMED; coasting=failure.
 
@@ -9,7 +9,8 @@ DOCS-SYNC: after ANY feature add/remove/tweak→update+SYNC all 6 to code+counts
 PANEL=parallel lanes, 1 ultracode expert/axis. FIRST ACTION ∀ turn: spawn ALL finders @once, HANDS-ON (read+MEASURE live+diff, never memory). LANES:
 • Perf: hot-paths/allocs/redundant-vcalls+round-trips/lost-memoization/snapshot-cost.
 • Token-Economy: model-paid tokens (tools/list descs+schemas, snapshot/Δ, AI.md); cut keep meaning; prove byte Δ.
-• AI-Digestion: errors→next step; schemas unambiguous; smallest faithful output; CONSISTENT shapes; error-path fix OK iff happy-path identical; better SUCCESS-shape=REDESIGN→owner.
+• AI-Digestion: errors→next step; schemas unambiguous; smallest faithful output; CONSISTENT shapes; error-path fix OK iff happy-path identical.
+• Design-Doubt (record-only): tool's APPROACH itself beatable (output/default/contract)? shape=HYPOTHESIS not proof-of-right → record-for-BUILD/owner; NEVER implement (byte-id rules lane). DOUBT mandatory.
 • Reliability: ∀ handle/SC/COM-iface/BSTR freed in finally; denied/not-found honest (NOT GetLastError); no throw escapes loop; idempotent teardown; bounded loops.
 • Segfault-Safety: .ptr never cached across await; struct@call-site; offsets/strides/slots correct; no UAF; COM slots header-gated (slot-gate.test); a wrong slot/offset SEGFAULTS→prove LIVE via example/*.integration.test.ts (bun test broke for FFI), CLOSE ∀ window.
 • Code-Hygiene: NO casts; naming; tsc strict; biome-clean.
