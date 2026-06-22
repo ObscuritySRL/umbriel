@@ -16,6 +16,7 @@ import { captureScreen, pixelColor, screenshotScreen } from './capture/screen';
 import { windowTree } from './desktop/spy';
 import { serialize } from './element/tree';
 import { captureWindowLive } from './capture/wgc';
+import { waitForVisualIdle } from './capture/match';
 import { listWindows } from './element/window';
 
 /** The Playwright-for-desktop facade: attach to a window, then find/waitFor/act/serialize. */
@@ -61,6 +62,7 @@ export const umbriel = {
   type,
   uninitialize,
   waitForIdle,
+  waitForVisualIdle,
   waitForProcess,
   waitForProcessGone,
   waitForWindow,
@@ -150,7 +152,7 @@ export {
   virtualKeyCode,
 } from './input/input';
 export { drawMarks, type MarkedScreenshot, type PlacedMark, screenshotWithMarks } from './capture/marks';
-export { findAllImages, findImage, locateAllOnScreen, locateColor, locateOnScreen, type Match } from './capture/match';
+export { findAllImages, findImage, frameDifference, locateAllOnScreen, locateColor, locateOnScreen, type Match, waitForVisualIdle } from './capture/match';
 export { accessibleFromWindow, type MsaaNode, msaaTree } from './element/msaa';
 export { disposeOcr, ocrAvailable, ocrBitmap, ocrScreen, type OcrLine, type OcrText, ocrWindow, type OcrWord } from './capture/ocr';
 export { ExpandCollapseState, gridItemPosition, NoScroll, ScrollAmount, type ScrollInfo, type TableData, ToggleState, type ViewState, WindowVisualState } from './element/patterns';

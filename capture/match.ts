@@ -152,3 +152,50 @@ export function locateColor(rgb: { r: number; g: number; b: number }, tolerance 
   }
   return null;
 }
+
+/** Mean per-channel absolute RGB delta (0..255) between two SAME-SIZE bitmaps, subsampled by `step` to bound cost.
+ *  Returns 255 (the max) when the dimensions differ — a resized/letterboxed frame counts as "changed", and the guard
+ *  prevents indexing past the smaller buffer (an OOB read → NaN-poisoned average). */
+export function frameDifference(a: Bitmap, b: Bitmap, step = 1): number {
+  if (a.width !== b.width || a.height !== b.height) return 255;
+  let total = 0;
+  let samples = 0;
+  const stride = a.width * 3;
+  for (let y = 0; y < a.height; y += step) {
+    const row = y * stride;
+    for (let x = 0; x < a.width; x += step) {
+      const index = row + x * 3;
+      total += Math.abs(a.rgb[index]! - b.rgb[index]!) + Math.abs(a.rgb[index + 1]! - b.rgb[index + 1]!) + Math.abs(a.rgb[index + 2]! - b.rgb[index + 2]!);
+      samples += 3;
+    }
+  }
+  return samples > 0 ? total / samples : 255;
+}
+
+/** Poll `getFrame` until consecutive frames stay within `tolerance` (mean-abs RGB, 0..255; default 2) for `quietMs`,
+ *  or `timeout` elapses — the pixel analog of waitForIdle for a surface with no a11y tree (game/canvas/WebGL/video/GPU
+ *  browser content), where the UIA tree is constant so waitForIdle "settles" instantly while pixels still animate.
+ *  A null frame (no surface / dropped capture) counts as "changed", so a surfaceless window never falsely settles.
+ *  The caller supplies the frame source: () => captureWindowLive(hWnd) for BG/WGC, () => captureScreen(region) for FG. */
+export async function waitForVisualIdle(getFrame: () => Bitmap | null | Promise<Bitmap | null>, options: { tolerance?: number; quietMs?: number; interval?: number; timeout?: number; step?: number } = {}): Promise<boolean> {
+  const tolerance = options.tolerance ?? 2;
+  const quietMs = options.quietMs ?? 400;
+  const interval = options.interval ?? 100;
+  const timeout = options.timeout ?? 5000;
+  const step = options.step ?? 4;
+  const start = Bun.nanoseconds();
+  let previous = await getFrame();
+  let stableSince = start;
+  for (;;) {
+    await Bun.sleep(interval);
+    const now = Bun.nanoseconds();
+    const current = await getFrame();
+    if (previous === null || current === null || frameDifference(previous, current, step) > tolerance) {
+      previous = current;
+      stableSince = now;
+    } else if ((now - stableSince) / 1e6 >= quietMs) {
+      return true;
+    }
+    if ((now - start) / 1e6 >= timeout) return false;
+  }
+}

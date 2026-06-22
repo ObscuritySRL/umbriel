@@ -1726,6 +1726,27 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { hWnd: { type: 'number', description: 'Target window handle (omit to use {ref} or the attached window)' }, ref: { type: 'string', description: 'An element ref whose window to probe' }, timeoutMs: { type: 'number', description: 'Max wait in ms (default 5000, clamped 50–30000)' } } },
   },
   {
+    name: 'wait_visual_idle',
+    category: 'read',
+    description:
+      'Block until the PIXELS stop changing — the visual analog of wait_idle for a surface with no a11y tree (a game/canvas/WebGL/video/GPU-composited browser view), where wait_idle returns "settled" instantly because the UIA tree never moves. Polls the window (occlusion-correct WGC via {hWnd}/{ref} or the attached window) or a screen {x,y,width,height} region (FG BitBlt), comparing consecutive frames; settles when the mean per-channel RGB delta stays within tolerance for quietMs. Returns "settled" or "still animating at timeout".',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        hWnd: { type: 'number', description: 'Target window handle (omit to use {ref}, an {x,y,width,height} region, or the attached window)' },
+        ref: { type: 'string', description: REF_DESC },
+        x: { type: 'number' },
+        y: { type: 'number' },
+        width: { type: 'number' },
+        height: { type: 'number' },
+        tolerance: { type: 'number', description: 'Per-channel mean-abs RGB delta 0..255 that still counts as "no change" (default 2 — the anti-alias/JPEG noise floor; NOT a 0..1 score)' },
+        quietMs: { type: 'number', description: 'Pixels must be stable this long to settle (default 400)' },
+        interval: { type: 'number', description: 'Poll period in ms (default 100, clamped 16–2000)' },
+        timeout: { type: 'number', description: 'Max wait in ms (default 5000, clamped 50–60000)' },
+      },
+    },
+  },
+  {
     name: 'wait_for_window',
     category: 'read',
     description:
@@ -2725,6 +2746,25 @@ const HANDLERS: Record<string, ToolHandler> = {
     if (!isWindow(hWnd)) return errorResult('wait_responsive: no such window (the handle is stale or closed — list_windows then attach a live window)');
     const timeoutMs = Math.min(30_000, Math.max(50, typeof args.timeoutMs === 'number' ? args.timeoutMs : 5_000));
     return textResult(windowResponsive(hWnd, timeoutMs) ? 'responsive' : 'not responding (hung)');
+  },
+  wait_visual_idle: async (args) => {
+    const tolerance = typeof args.tolerance === 'number' ? args.tolerance : 2;
+    const quietMs = Math.max(0, typeof args.quietMs === 'number' ? args.quietMs : 400);
+    const interval = Math.min(2000, Math.max(16, typeof args.interval === 'number' ? args.interval : 100));
+    const timeout = Math.min(60_000, Math.max(50, typeof args.timeout === 'number' ? args.timeout : 5000));
+    const options = { tolerance, quietMs, interval, timeout };
+    const label = (settled: boolean): string => (settled ? `pixels settled (no change > ±${tolerance} for ${quietMs}ms)` : 'pixels still animating at timeout');
+    // FG path: an explicit region with no window target → BitBlt that region of the live desktop.
+    if ((typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number') && hwndArg(args) === undefined && typeof args.ref !== 'string') {
+      const region = { x: typeof args.x === 'number' ? args.x : undefined, y: typeof args.y === 'number' ? args.y : undefined, width: typeof args.width === 'number' ? args.width : undefined, height: typeof args.height === 'number' ? args.height : undefined };
+      return textResult(label(await umbriel.waitForVisualIdle(() => umbriel.captureScreen(region), options)));
+    }
+    // BG path: the {hWnd}/{ref}/attached window via occlusion-correct WGC.
+    const hWnd = resolveHwnd(args);
+    if (!isWindow(hWnd)) return errorResult('wait_visual_idle: no such window (the handle is stale or closed — list_windows then attach a live window)');
+    if (isMinimized(hWnd)) return errorResult(minimizedCaptureSteer(hWnd, 'wait_visual_idle'));
+    if (!wgcAvailable()) return errorResult(captureUnavailable('wait_visual_idle'));
+    return textResult(label(await umbriel.waitForVisualIdle(() => captureWindowLive(hWnd), options)));
   },
   wait_for_window: async (args) => {
     const match: { title?: string; className?: string; process?: number } = {};

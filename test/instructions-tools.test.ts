@@ -12,7 +12,7 @@ const toolNames = new Set([...toolsBlock.matchAll(/name:\s*'([a-z_]+)'/g)].map((
 const instructions = mcp.slice(mcp.indexOf('const INSTRUCTIONS ='), mcp.indexOf('const INSTRUCTIONS_READONLY'));
 
 test('TOOLS array parsed for the honesty check', () => {
-  expect(toolNames.size).toBe(94);
+  expect(toolNames.size).toBe(95);
 });
 
 test('INSTRUCTIONS names no snake_case token that is not a real tool', () => {

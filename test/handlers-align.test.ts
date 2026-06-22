@@ -13,7 +13,7 @@ const handlersBlock = mcp.slice(mcp.indexOf('const HANDLERS'));
 const handlerKeys = new Set([...handlersBlock.matchAll(/^ {2}([a-z_]+): (?:async )?\(/gm)].map((match) => match[1]));
 
 test('every TOOLS name has a HANDLERS entry, and every handler has a tool (no listed-but-undispatchable, no dead handler)', () => {
-  expect(toolNames.size).toBe(94);
+  expect(toolNames.size).toBe(95);
   expect([...toolNames].filter((name) => !handlerKeys.has(name))).toEqual([]); // tools with no handler
   expect([...handlerKeys].filter((key) => !toolNames.has(key))).toEqual([]); // handlers with no tool
   expect(handlerKeys.size).toBe(toolNames.size);
