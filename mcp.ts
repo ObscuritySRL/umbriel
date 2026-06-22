@@ -131,6 +131,10 @@ import {
   type Snapshot,
   type StateExpectation,
   type TableData,
+  decodePNG,
+  locateAllOnScreen,
+  locateColor,
+  locateOnScreen,
   umbriel,
   undoControl,
   virtualScreen,
@@ -1832,6 +1836,20 @@ const TOOLS: McpTool[] = [
     inputSchema: { type: 'object', properties: { x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' } } },
   },
   {
+    name: 'find_image',
+    category: 'read',
+    description:
+      'Template-match an icon/button image on the live screen and return its SCREEN-absolute {x,y,score} — the AHK ImageSearch / nut.js findOnScreen hole, for grounding a game/canvas/WebGL/remote-desktop surface with no a11y tree. Pass {image} as a base64-encoded PNG (8-bit, color type 0/2/3/6); scope with a region {x,y,width,height}; threshold 0..1 (default 0.92); all:true returns every match. Returns coords to hand to click_point. Matches the BitBlt screen (CAPTUREBLT includes overlays), not a WGC live-GPU frame.',
+    inputSchema: { type: 'object', properties: { image: { type: 'string' }, threshold: { type: 'number' }, all: { type: 'boolean' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' } }, required: ['image'] },
+  },
+  {
+    name: 'find_color',
+    category: 'read',
+    description:
+      'Find the first screen pixel within tolerance of an RGB color and return its SCREEN-absolute {x,y} — the AHK PixelSearch / nut.js pixelWithColor hole, for color-grounding a surface with no a11y tree. Scope with a region {x,y,width,height}; tolerance is the per-channel ± (default 0). Returns coords to hand to click_point.',
+    inputSchema: { type: 'object', properties: { r: { type: 'number' }, g: { type: 'number' }, b: { type: 'number' }, tolerance: { type: 'number' }, x: { type: 'number' }, y: { type: 'number' }, width: { type: 'number' }, height: { type: 'number' } }, required: ['r', 'g', 'b'] },
+  },
+  {
     name: 'screenshot_marked',
     category: 'read',
     description:
@@ -2945,6 +2963,39 @@ const HANDLERS: Record<string, ToolHandler> = {
           }
         : undefined;
     return imageResult(umbriel.screenshotScreen(region));
+  },
+  find_image: (args) => {
+    const decoded = decodePNG(new Uint8Array(Buffer.from(requireString(args, 'image'), 'base64'))); // throws on a bad/unsupported PNG → top-level catch → errorResult
+    const needle = { ...decoded, originX: 0, originY: 0 };
+    const region =
+      typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number'
+        ? { x: typeof args.x === 'number' ? args.x : undefined, y: typeof args.y === 'number' ? args.y : undefined, width: typeof args.width === 'number' ? args.width : undefined, height: typeof args.height === 'number' ? args.height : undefined }
+        : undefined;
+    const threshold = typeof args.threshold === 'number' ? args.threshold : undefined;
+    if (args.all === true) {
+      const matches = locateAllOnScreen(needle, { threshold, region });
+      return matches.length === 0
+        ? errorResult(`find_image: no match ≥ ${threshold ?? 0.92}${region ? ' in region' : ' on screen'} — try a tighter crop, a lower threshold, or screen_capture to see what is there`)
+        : textResult(`find_image: ${matches.length} match(es):\n${matches.map((match) => `  {x:${match.x}, y:${match.y}, score:${match.score.toFixed(3)}}`).join('\n')}\nclick_point {x,y} to act on one.`);
+    }
+    const match = locateOnScreen(needle, { threshold, region });
+    return match === null
+      ? errorResult(`find_image: no match ≥ ${threshold ?? 0.92}${region ? ' in region' : ' on screen'} — try a tighter crop, a lower threshold, or screen_capture to see what is there`)
+      : textResult(`find_image: match at {x:${match.x}, y:${match.y}} score ${match.score.toFixed(3)} — click_point {x:${match.x}, y:${match.y}} to act.`);
+  },
+  find_color: (args) => {
+    const r = requireNumber(args, 'r');
+    const g = requireNumber(args, 'g');
+    const b = requireNumber(args, 'b');
+    const tolerance = typeof args.tolerance === 'number' ? args.tolerance : 0;
+    const region =
+      typeof args.x === 'number' || typeof args.y === 'number' || typeof args.width === 'number' || typeof args.height === 'number'
+        ? { x: typeof args.x === 'number' ? args.x : undefined, y: typeof args.y === 'number' ? args.y : undefined, width: typeof args.width === 'number' ? args.width : undefined, height: typeof args.height === 'number' ? args.height : undefined }
+        : undefined;
+    const hit = locateColor({ r, g, b }, tolerance, region);
+    return hit === null
+      ? errorResult(`find_color: no pixel within ±${tolerance} of rgb(${r},${g},${b})${region ? ' in region' : ' on screen'}`)
+      : textResult(`find_color: match at {x:${hit.x}, y:${hit.y}} — click_point {x:${hit.x}, y:${hit.y}} to act.`);
   },
   screenshot_marked: () => {
     const window = requireAttached();

@@ -154,7 +154,7 @@ export { findAllImages, findImage, locateAllOnScreen, locateColor, locateOnScree
 export { accessibleFromWindow, type MsaaNode, msaaTree } from './element/msaa';
 export { disposeOcr, ocrAvailable, ocrBitmap, ocrScreen, type OcrLine, type OcrText, ocrWindow, type OcrWord } from './capture/ocr';
 export { ExpandCollapseState, gridItemPosition, NoScroll, ScrollAmount, type ScrollInfo, type TableData, ToggleState, type ViewState, WindowVisualState } from './element/patterns';
-export { encodePNG } from './capture/png';
+export { decodePNG, encodePNG } from './capture/png';
 export { decodeBstr, getBstr, getCachedPropertyValue, getHandle, getLong, getPropertyValue, getRect, type Rect, type VariantValue } from './com/reads';
 export { capSnapshot, coldTreeNote, type Mark, pruneRefTree, type RefNode, renderSnapshot, snapshot, Snapshot } from './element/refmap';
 export { type AuditRecord, redactTree, safeExecute, type SafeOptions, toToolResult } from './agent/safety';
