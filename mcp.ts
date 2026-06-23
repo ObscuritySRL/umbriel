@@ -11,7 +11,7 @@
 // thread; dispatch is serialized so two calls never overlap the apartment. Newline-delimited JSON-RPC 2.0
 // over stdin/stdout (no SDK); every diagnostic goes to stderr.
 
-import { cpSync, existsSync, mkdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, realpathSync, renameSync, rmdirSync, rmSync, statSync, unlinkSync } from 'node:fs';
 import { appendFile, readdir } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 
@@ -106,6 +106,7 @@ import {
   renderWindowTree,
   parseHive,
   readEventLog,
+  recycleToBin,
   registryCreateKey,
   registryDeleteKey,
   registryDeleteValue,
@@ -2475,8 +2476,8 @@ const TOOLS: McpTool[] = [
   {
     name: 'delete_file',
     category: 'fs',
-    description: 'Delete a file, or an EMPTY directory; pass {recursive:true} to delete a directory tree. Natively, no del/rmdir shell. DESTRUCTIVE — gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
-    inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean', description: 'Delete a non-empty directory tree (default false — an empty dir or a file only)' } }, required: ['path'] },
+    description: 'Delete a file, or an EMPTY directory; pass {recursive:true} to delete a directory tree, or {recycle:true} to send it to the Recycle Bin (RECOVERABLE) instead of permanently deleting — recycle is best-effort (a network/removable volume with no Recycle Bin, or an over-quota file, may still hard-delete). Natively, no del/rmdir shell. DESTRUCTIVE — gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
+    inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean', description: 'Delete a non-empty directory tree (default false — an empty dir or a file only)' }, recycle: { type: 'boolean', description: 'Send to the Recycle Bin (RECOVERABLE) instead of permanently deleting (default false); best-effort — a volume without a Recycle Bin may still hard-delete' } }, required: ['path'] },
   },
 ];
 
@@ -4245,6 +4246,13 @@ const HANDLERS: Record<string, ToolHandler> = {
     const path = resolveFsPath(requireString(args, 'path'));
     try {
       const isDirectory = statSync(path).isDirectory();
+      if (args.recycle === true) {
+        // Preserve the same empty-dir safety floor the permanent rmdirSync path enforces: a non-empty directory still
+        // needs {recursive:true} (FO_DELETE would otherwise recycle the whole tree on a bare {recycle:true}).
+        if (isDirectory && args.recursive !== true && readdirSync(path).length > 0) return errorResult(`delete_file: ${path} is a non-empty directory — pass {recursive:true} to recycle the whole tree`);
+        if (!recycleToBin(path)) return errorResult(`delete_file: could not send ${path} to the Recycle Bin — it may be locked, in use, or on a volume without one (it was NOT deleted)`);
+        return textResult(`recycled ${isDirectory ? 'directory' : 'file'} ${path} (recoverable from the Recycle Bin where the volume supports undo)`);
+      }
       if (!isDirectory) unlinkSync(path);
       else if (args.recursive === true) rmSync(path, { recursive: true });
       else rmdirSync(path); // empty dir only — a non-empty dir errors with a {recursive:true} steer (a safety floor)

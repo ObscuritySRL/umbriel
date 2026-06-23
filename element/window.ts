@@ -2,6 +2,8 @@
 // EnumWindows invokes its callback synchronously on the calling thread (no foreign-thread hazard).
 // PrintWindow + GDI capture a window's own rendering; the PNG can be blank on a locked session.
 
+import { resolve } from 'node:path';
+
 import { FFIType, JSCallback } from 'bun:ffi';
 
 import Advapi32 from '@bun-win32/advapi32';
@@ -237,6 +239,31 @@ export function processImagePath(processId: number): string {
 export function openPath(path: string): boolean {
   const file = Buffer.from(`${path}\0`, 'utf16le');
   return Shell32.ShellExecuteW(0n, null, file.ptr!, null, null, 0x0000_0001) > 32n; // SW_SHOWNORMAL
+}
+
+const FO_DELETE = 0x0000_0003; // SHFileOperation wFunc — delete the pFrom list
+// FOF flags (shellapi.h): ALLOWUNDO 0x40 routes to the Recycle Bin (vs a permanent delete); NOCONFIRMATION 0x10 +
+// SILENT 0x04 + NOERRORUI 0x400 suppress every confirm/progress/error window (a stdio MCP host has no UI thread to
+// dismiss one — an unsuppressed modal would hang it forever); NORECURSEREPARSE 0x8000 operates on a junction itself,
+// never recursing into its target tree (defense-in-depth with the caller's reparse-point sandbox check).
+const FOF_RECYCLE = 0x0040 | 0x0010 | 0x0004 | 0x0400 | 0x8000; // = 0x8454
+
+/** Send a path to the Windows Recycle Bin via SHFileOperationW(FO_DELETE | FOF_ALLOWUNDO) — a RECOVERABLE delete,
+ *  unlike a permanent unlink (a wrong delete can be restored). A directory recycles its whole subtree in one call.
+ *  Returns true only on a clean recycle (return code 0 AND fAnyOperationsAborted 0). BEST-EFFORT: a volume with no
+ *  Recycle Bin (most network/removable) or an over-quota file may silently HARD-delete and still return success, so a
+ *  caller must not promise undo unconditionally. The path is resolved to absolute (SHFileOperation requires a
+ *  fully-qualified path) and MUST NOT contain an embedded NUL — a NUL would terminate the double-NUL-terminated pFrom
+ *  list early and make the shell treat the bytes after it as ADDITIONAL paths to delete (outside any sandbox); rejected
+ *  up front (the node:fs unlink path rejects this intrinsically, the shell list does not). */
+export function recycleToBin(path: string): boolean {
+  if (path.includes('\0')) throw new Error('recycleToBin: path contains an embedded NUL'); // the embedded-NUL pFrom-injection guard
+  const from = Buffer.from(`${resolve(path)}\0\0`, 'utf16le'); // pFrom is a PCZZWSTR: the per-string NUL + the list-terminating NUL (a single NUL reads adjacent heap as more paths — see clipboard.ts's CF_HDROP list)
+  const op = Buffer.alloc(56); // x64 SHFILEOPSTRUCTW: hwnd@0, wFunc@8, pFrom@16, pTo@24, fFlags(WORD)@32, fAnyOperationsAborted@36, hNameMappings@40, lpszProgressTitle@48 — every unset field stays 0
+  op.writeUInt32LE(FO_DELETE, 8); // wFunc
+  op.writeBigUInt64LE(BigInt(from.ptr!), 16); // pFrom — .ptr read inline; `from` stays a live local through the synchronous call below so the GC cannot relocate its backing store
+  op.writeUInt16LE(FOF_RECYCLE, 32); // fFlags is a 16-bit WORD
+  return Shell32.SHFileOperationW(op.ptr!) === 0 && op.readInt32LE(36) === 0; // success = return code 0 AND not aborted (a 0-but-aborted is a partial)
 }
 
 /** The raw Win32 file-attribute bitmask for a path (GetFileAttributesW) — `0xffffffff` (INVALID_FILE_ATTRIBUTES) when

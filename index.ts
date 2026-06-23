@@ -190,6 +190,7 @@ export {
   ownerWindow,
   processImagePath,
   raiseWindow,
+  recycleToBin,
   restoreWindow,
   screenshot,
   setOpacity,
