@@ -86,6 +86,23 @@ local draft, not a shipped doc.)
   handlers (one with a divergent order); foldable byte-identical like the prior regionArg() win. Low priority.
 - **list_views/set_view/copy_image handler tests (A-test, LOW)** — no direct MCP-handler-layer test (facade covered).
 
+## CONFIRMING SWEEP + EARNED CONVERGENCE
+A 4-seat adversarial confirming push over the 7-commit cycle diff (FFI/leak/segfault · security/sandbox ·
+correctness/test · fresh whole-surface re-sweep) returned **all 4 lanes CLEAN-with-evidence** — it traced every
+throw/return path of the recycle struct, the findAll/findAllCached release accounting, the msaa VariantClear, the
+wgc cast, and the slot-gate pins, and found **no defect introduced by the cycle** (tsc 0, 108 unit tests, recycle
+live 9/9). It surfaced ONE honest-completeness note: a PRE-EXISTING (66e6545), deeply-narrow, likely-unreachable
+double-release in `findFirstMatch`'s INLINE match-branch remainder-release (the catch's `rest=index..` loop overlaps
+it IF a remainder `comRelease` itself throws mid-loop). Not a cycle regression (findAll/findAllCached have no inline
+release loop), but it is the same throw-path-release class — so hardened in **`ad3c0b8`**: null out each released
+remainder so the catch's overlapping cleanup is an idempotent no-op, mirroring `Element.release`'s `#ptr` zeroing.
+Happy path byte-identical; new idempotency pin in `find-throw-release.test.ts`; `filter-has-hastext` live green.
+
+**Convergence EARNED, not asserted:** the fresh 14-seat sweep found 24 candidates → 8 real wins shipped (each
+live-or-structurally proven + gated + committed/pushed), the rest declined-with-reasons or owner-gated; the
+confirming sweep found no cycle defect across 4 independent lanes; the one pre-existing edge it raised is now fixed
+and pinned. Final state: tsc 0, 108 unit tests, biome clean, 99 tools, every lane clean-with-evidence.
+
 ## STILL-WALLED (declined walls re-probed — all hold)
 DockPattern, ItemContainer VARIANT segfault, OLE drag-drop, toast AUMID, RegisterHotKey-vs-stateless,
 virtual-desktop-move E_ACCESSDENIED — unchanged. Owner-reserved binding nullability gaps remain in TODO.md
