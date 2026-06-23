@@ -75,7 +75,7 @@ function vcall(thisPtr: bigint, slot: number, argTypes: readonly FFIType[], args
     invoke = CFunction({ ptr: Number(method) as Pointer, args: [FFIType.u64, ...argTypes], returns });
     invokers.set(key, invoke);
   }
-  return invoke(thisPtr, ...args) as number;
+  return Number(invoke(thisPtr, ...args));
 }
 
 function release(ptr: bigint): void {
