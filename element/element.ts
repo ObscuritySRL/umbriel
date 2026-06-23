@@ -633,12 +633,26 @@ export class Element {
       const request = createCacheRequest(MATCHER_PROPERTIES, TreeScope.TreeScope_Element, AutomationElementMode.Full);
       const subtreeFilter = needsSubtreeFilter(selector);
       try {
+        const pointers = findAllCachedPointers(this.ptr, scope, compiled.condition, request.ptr);
         const result: Element[] = [];
-        for (const pointer of findAllCachedPointers(this.ptr, scope, compiled.condition, request.ptr)) {
-          if (matches(readCachedProperties(pointer, selector), selector) && (!subtreeFilter || subtreeMatches(pointer, selector))) result.push(new Element(pointer));
-          else comRelease(pointer);
+        let index = 0;
+        try {
+          for (; index < pointers.length; index += 1) {
+            const pointer = pointers[index]!;
+            if (matches(readCachedProperties(pointer, selector), selector) && (!subtreeFilter || subtreeMatches(pointer, selector))) result.push(new Element(pointer));
+            else comRelease(pointer);
+          }
+          return result;
+        } catch (error) {
+          // A per-candidate cached read (readCachedProperties / subtreeMatches) vcall-throws the use-after-free guard when a
+          // candidate proxy was torn down between FindAllBuildCache and this read (a fast-changing tree). On that throw the
+          // already-materialized matches, the current proxy, and the un-walked remainder are all still owned — free them so
+          // the aborted find does not leak (the finally below releases only the cache request). Sibling of the findFirstMatch
+          // ae54a76 fix, applied to the find-ALL path.
+          for (const element of result) element.release();
+          for (let rest = index; rest < pointers.length; rest += 1) comRelease(pointers[rest]!);
+          throw error;
         }
-        return result;
       } finally {
         request.release();
       }
@@ -662,14 +676,23 @@ export class Element {
         if (vcall(pArray, SLOT.get_Length, [FFIType.ptr], [scratch4.ptr!]) !== S_OK) return [];
         const length = scratch4.readInt32LE(0);
         const result: Element[] = [];
-        for (let index = 0; index < length; index += 1) {
-          if (vcall(pArray, SLOT.GetElement, [FFIType.i32, FFIType.ptr], [index, scratch8.ptr!]) !== S_OK) continue;
-          const pointer = scratch8.readBigUInt64LE(0);
-          if (pointer === 0n) continue;
-          if ((!compiled.needsClientFilter || matches(readCachedProperties(pointer, selector), selector)) && (!subtreeFilter || subtreeMatches(pointer, selector))) result.push(new Element(pointer));
-          else comRelease(pointer);
+        let pending = 0n; // the candidate currently being classified — released by the catch if its cached read / subtree find throws mid-decision (mirrors findAll/findFirstMatch's in-flight release)
+        try {
+          for (let index = 0; index < length; index += 1) {
+            if (vcall(pArray, SLOT.GetElement, [FFIType.i32, FFIType.ptr], [index, scratch8.ptr!]) !== S_OK) continue;
+            const pointer = scratch8.readBigUInt64LE(0);
+            if (pointer === 0n) continue;
+            pending = pointer;
+            if ((!compiled.needsClientFilter || matches(readCachedProperties(pointer, selector), selector)) && (!subtreeFilter || subtreeMatches(pointer, selector))) result.push(new Element(pointer));
+            else comRelease(pointer);
+            pending = 0n;
+          }
+          return result;
+        } catch (error) {
+          if (pending !== 0n) comRelease(pending); // the candidate whose torn-down-proxy read threw mid-decision (not yet pushed or released)
+          for (const element of result) element.release(); // + the matches already materialized — the array never returns, so the caller cannot release them
+          throw error;
         }
-        return result;
       } finally {
         comRelease(pArray);
       }
