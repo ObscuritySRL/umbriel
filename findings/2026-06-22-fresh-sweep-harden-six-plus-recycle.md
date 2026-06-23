@@ -43,14 +43,17 @@ surfaced real *defect-class-completeness* gaps the prior pass missed, plus one s
   unit tests, biome clean, 99 tools (a flag, not a new tool), AI.md synced. The test never empties the Recycle Bin.
 
 ## DECLINED — with reasons (not bugs; re-confirmed, do not re-flag without NEW evidence)
-- **get_env / read_event_log "redaction bypass" (A-security, MED×2)** — DECLINED as a unilateral fix. The prior
-  cycle DELIBERATELY documented "explicit OS DATA reads (run_program stdout, registry/env/file/event-log) by-design
-  unmasked," consistent with umbriel's core thesis (SEE anything kernel→pixels): a human reading the event log /
-  env vars sees the raw values, and masking explicit data-reads would cripple the tool's purpose. The redaction
-  floor exists to stop INCIDENTAL on-screen-secret leakage during automation (snapshot/OCR/clipboard), not to blind
-  explicit reads. The genuine signal is the *inconsistency* with the redacted `process_info` commandLine — a policy
-  question for the OWNER (redact incidental OS-read secrets too, or document env/event-log as deliberately raw), not
-  a reversal an autonomous cycle should make. Recorded for owner adjudication.
+- **get_env / read_event_log "redaction bypass" (A-security, MED×2)** — DECLINED, now **OWNER-CONFIRMED (2026-06-23):
+  env + event-log reads stay RAW / unmasked.** Consistent with umbriel's core thesis (SEE anything kernel→pixels): a
+  human reading their own machine's env vars / event log sees the real values, and masking an EXPLICIT data-read would
+  defeat the tool's purpose. The redaction floor exists to stop INCIDENTAL on-screen-secret leakage during automation
+  (snapshot/OCR/clipboard), not to blind explicit OS data reads (env/event-log/registry/file/run_program-stdout). To
+  stop the redaction-completeness lane re-raising this every cycle, the rationale is now encoded as durable comments AT
+  the handlers (get_env ~4026, read_event_log ~3913) — byte-identical behavior, live-proven by the existing env-var +
+  event-log integration tests. The narrower `process_info` commandLine redaction is a SEPARATE deliberate choice (an
+  argv carries INCIDENTAL secrets you didn't explicitly ask for) and is intentionally retained — not the same class as
+  an explicit value read. FUTURE FINDERS: do NOT re-flag env/event-log/registry/file raw reads as a leak; they are
+  by-design unmasked, owner-confirmed.
 - **HTTP fetch / download (B-capgap, LOW)** — confirmed still needs run_program today; Bun.fetch could close it with
   no binding, but arbitrary outbound HTTP from the automation host is an SSRF/exfiltration surface. A product/security
   decision (own `net` category, default-off, host allowlist), not an autonomous ship.

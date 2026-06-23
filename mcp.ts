@@ -3910,6 +3910,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const level = args.level === 'error' || args.level === 'warning' || args.level === 'all' ? args.level : 'all';
     const records = readEventLog(log, count, level);
     if (records.length === 0) return errorResult(`read_event_log: no ${level === 'all' ? '' : `${level} `}records in the "${log}" log (or it could not be opened — Security needs elevation; see current_user)`);
+    // Event-log MESSAGES reach the model UNMASKED by design: read_event_log is an EXPLICIT OS data read (the agent asked to read this machine's own event log), so umbriel's see-anything contract surfaces the real content; redaction targets INCIDENTAL on-screen content (snapshot/OCR/clipboard), not explicit OS reads (owner-confirmed). The 300-char cap bounds size, not secrets.
     return textResult(records.map((record) => `[${record.time}] ${record.type.toUpperCase()} ${record.source} (id ${record.eventId}, rec#${record.recordNumber})${record.message !== '' ? `: ${record.message.slice(0, 300)}` : ''}`).join('\n'));
   },
   get_displays: () => {
@@ -4022,6 +4023,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const scope = parseScope(args.scope);
     if (scope === null) return errorResult('get_env: scope must be process | user | machine');
     if (typeof args.name === 'string') {
+      // the env VALUE reaches the model UNMASKED by design: get_env is an explicit OS data read (the agent asked for this var); see-anything surfaces it. Redaction targets incidental on-screen content, not explicit OS reads (owner-confirmed).
       const value = getEnv(scope, args.name);
       return value === null ? errorResult(`get_env: ${scope} env var ${args.name} is not set`) : textResult(`${args.name}:\n${value}`); // value on line 2 — keeps it off the trace journal's line-1 sample (a value may be a secret)
     }
