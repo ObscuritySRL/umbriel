@@ -396,6 +396,7 @@ describe('slot-gate coverage ↔ engine call sites (no drift)', () => {
     'msaa.ts': new Set([8, 10, 13, 22]), // get_accChildCount, get_accName, get_accRole, accLocation
     'desktop.ts': new Set([3, 4]), // IsWindowOnCurrentVirtualDesktop, GetWindowDesktopId
     'wgc.ts': new Set([3, 5, 6, 7, 10, 14, 15, 47]), // interop/access/framepool/session/frame/device/context slots
+    'events.ts': new Set([10]), // IACC_GET_ACCNAME (IAccessible::get_accName) — announcedText()'s sole vcall on the wait_for_alert WinEvent path
   };
   const IUNKNOWN_SLOTS = new Set([0, 1, 2]);
 
@@ -454,6 +455,19 @@ describe('slot-gate coverage ↔ engine call sites (no drift)', () => {
     const enumNext = constValues(source).get('ENUM_NEXT');
     expect(enumNext).not.toBeUndefined(); // the const must exist and be parseable (a sanity check on the parser)
     expect(enumNext).toBe(3); // 3 = the slot the VTBL block above verifies vs oaidl.h IEnumVARIANT::Next; a wrong literal fails loudly here
+  });
+
+  // events.ts's announcedText() (the wait_for_alert WinEvent path) reads IAccessible::get_accName through a bare
+  // `const IACC_GET_ACCNAME` — the THIRD local-const slot with the same blind spot TEXTRANGE_SELECT/ENUM_NEXT had:
+  // the VTBL block header-verifies get_accName=10 and msaa.ts's own slot-10 use is gated, but nothing tied events.ts's
+  // OWN literal to it. A 10->11 typo (= get_accValue, same [VARIANT, BSTR*] arity → the WRONG string for every
+  // announcement) or a 10->different-arity slot (→ args read from garbage registers, crash) passed the whole gate. The
+  // GATED_SLOTS_BY_FILE entry above now ties its vcall to the gate; this pins the literal to the header-verified value.
+  test('events.ts IACC_GET_ACCNAME literal matches the header-verified IAccessible::get_accName slot (10)', () => {
+    const source = readFileSync(engineFile('events.ts'), 'utf8');
+    const accName = constValues(source).get('IACC_GET_ACCNAME');
+    expect(accName).not.toBeUndefined(); // the const must exist and be parseable (a sanity check on the parser)
+    expect(accName).toBe(10); // 10 = the slot the VTBL block above verifies vs oleacc.h IAccessible::get_accName; a wrong literal fails loudly here
   });
 });
 
