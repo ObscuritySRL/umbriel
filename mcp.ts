@@ -1584,8 +1584,8 @@ const TOOLS: McpTool[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        maxDepth: { type: 'number', description: 'Cap tree DEPTH (default 40). Does NOT bound a flat/wide tree — use maxNodes for a high-density window.' },
-        maxNodes: { type: 'number', description: 'Cap TOTAL nodes walked (default 1500) — the lever for a dense window with thousands of sibling controls; the tree is truncated with a "raise maxNodes" hint when hit.' },
+        maxDepth: { type: 'number', description: 'Default 40' },
+        maxNodes: { type: 'number', description: 'Default 1500' },
         root: { type: 'string', description: "Re-ground on just one element's subtree (zoom into a large window): the name or automationId of a node from a prior snapshot. Combine with maxDepth/maxNodes." },
       },
     },
