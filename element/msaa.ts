@@ -7,6 +7,7 @@
 import { FFIType } from 'bun:ffi';
 
 import Oleacc, { IID_IAccessible, OBJID } from '@bun-win32/oleacc';
+import Oleaut32 from '@bun-win32/oleaut32';
 
 import { comRelease, guid, vcall } from '../com/com';
 import { S_OK, VT_DISPATCH, VT_I4 } from '../com/constants';
@@ -49,7 +50,9 @@ function accName(accessible: bigint, childId: number): string {
 function accRole(accessible: bigint, childId: number): number {
   const roleVariant = Buffer.alloc(VARIANT_SIZE);
   if (vcall(accessible, IACC_GET_ACCROLE, [FFIType.ptr, FFIType.ptr], [childVariant(childId).ptr!, roleVariant.ptr!]) !== S_OK) return -1;
-  return roleVariant.readUInt16LE(0) === VT_I4 ? roleVariant.readInt32LE(8) : -1;
+  if (roleVariant.readUInt16LE(0) === VT_I4) return roleVariant.readInt32LE(8); // a predefined ROLE_SYSTEM_* (≈every real app) — VT_I4 owns no resource, so skip the cross-DLL VariantClear
+  Oleaut32.VariantClear(roleVariant.ptr!); // MSDN: some providers return a VT_BSTR role — free its BSTR (a non-I4 vt is the only resource-owning case here; mirrors reads.ts/readVariantProperty)
+  return -1;
 }
 
 function accLocation(accessible: bigint, childId: number): { x: number; y: number; width: number; height: number } | undefined {
