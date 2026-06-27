@@ -35,3 +35,6 @@ coverage
 # Local-only dev docs — never publish
 ARTICLE.md
 DISCORD_POST.md
+
+# Local-only dev scripts — never publish (kept on disk, out of git + the published tarball)
+scripts/chatgpt-imagegen.ts
