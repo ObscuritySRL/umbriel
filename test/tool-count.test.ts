@@ -27,3 +27,18 @@ test('AI.md quotes the live tool counts', async () => {
   const ai = await Bun.file(`${import.meta.dir}/../AI.md`).text();
   expect(ai).toContain(`**${total} tools** (${safe} visible under the default \`safe\` profile; ${readonly} under \`readonly\`; the ${osFs} os/fs tools need \`full\` or \`UMBRIEL_OS=1\`)`);
 });
+
+// AI.md's "sandbox EVERY fs-category file tool (…)" parenthetical is a security-relevant enumeration — exactly what
+// UMBRIEL_FS_ROOT confines. It silently drifted to 7 of 9 (find_files + stat_path were FS_ROOT-confined in code but absent
+// from the doc list). Derive the fs tool names from mcp.ts and assert each appears in that claim, so the NEXT fs tool added
+// without a doc sync fails here, not review. (Pairs each `name:` with its following `category:` — name precedes category in
+// every TOOLS entry; matchAll is non-overlapping, so each name binds to its own tool's category.)
+test('AI.md "sandbox EVERY fs-category" sentence lists every fs-category tool', async () => {
+  const ai = await Bun.file(`${import.meta.dir}/../AI.md`).text();
+  const fsTools = [...block.matchAll(/name:\s*'([a-z_]+)'[\s\S]*?category:\s*'([a-z]+)'/g)].filter((match) => match[2] === 'fs').map((match) => match[1]);
+  expect(fsTools.length).toBe(categories.filter((category) => category === 'fs').length); // sanity: paired-parse matches the category count
+  const start = ai.indexOf('sandbox EVERY fs-category file tool (');
+  expect(start).toBeGreaterThan(-1); // the claim sentence is present
+  const fsList = ai.slice(start, ai.indexOf(')', start) + 1); // the parenthetical tool list, up to its closing paren
+  expect(fsTools.filter((name) => !fsList.includes(`\`${name}\``))).toEqual([]); // any fs tool missing from the sandbox claim
+});
