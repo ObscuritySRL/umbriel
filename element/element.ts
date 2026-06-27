@@ -353,16 +353,20 @@ export class Element {
   chromiumHostHandle(): bigint {
     let node: Element | null = this;
     for (let depth = 0; node !== null && depth < 32; depth += 1) {
-      const handle = node.nativeWindowHandle;
-      if (handle !== 0n) {
-        const buffer = Buffer.alloc(512);
-        const length = User32.GetClassNameW(handle, buffer.ptr!, 256);
-        const className = length > 0 ? buffer.subarray(0, length * 2).toString('utf16le') : '';
-        if (node !== this) node.release();
-        return className === 'Chrome_RenderWidgetHostHWND' || className === 'Chrome_WidgetWin_1' ? handle : 0n;
+      const current: Element = node; // non-null per the loop guard; a typed alias keeps the release in the finally and avoids the reassigned-let TS7022
+      let parent: Element | null = null;
+      try {
+        const handle = current.nativeWindowHandle; // nativeWindowHandle (getHandle) and .parent below are vcalls — a torn-down ancestor mid-walk throws the UAF guard
+        if (handle !== 0n) {
+          const buffer = Buffer.alloc(512);
+          const length = User32.GetClassNameW(handle, buffer.ptr!, 256);
+          const className = length > 0 ? buffer.subarray(0, length * 2).toString('utf16le') : '';
+          return className === 'Chrome_RenderWidgetHostHWND' || className === 'Chrome_WidgetWin_1' ? handle : 0n;
+        }
+        parent = current.parent;
+      } finally {
+        if (current !== this) current.release(); // release each walked ANCESTOR on EVERY exit incl. a handle/parent throw (was a bare release outside try → leaked the ancestor proxy); `this` is caller-owned, never released
       }
-      const parent: Element | null = node.parent;
-      if (node !== this) node.release();
       node = parent;
     }
     return 0n;
