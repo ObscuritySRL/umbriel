@@ -149,8 +149,12 @@ function subtreeMatches(ptr: bigint, selector: Selector): boolean {
     const labelPointer = scratch8.readBigUInt64LE(0);
     if (labelPointer === 0n) return false;
     const label = new Element(labelPointer);
-    const matched = label.name === selector.labeledBy;
-    label.release();
+    let matched: boolean;
+    try {
+      matched = label.name === selector.labeledBy; // label.name issues a get_CurrentName vcall — a torn-down label proxy throws the UAF guard
+    } finally {
+      label.release(); // release on EVERY exit incl. that throw (was a bare label.release() outside try → leaked the label IUIAutomationElement proxy; mirrors elementArrayNames/walkFolder/msaa)
+    }
     if (!matched) return false;
   }
   return true;
