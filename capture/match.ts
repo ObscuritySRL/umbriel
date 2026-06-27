@@ -16,7 +16,6 @@ export interface Match {
 
 function meanDifference(haystack: Bitmap, needle: Bitmap, offsetX: number, offsetY: number, step: number): number {
   let total = 0;
-  let samples = 0;
   for (let ny = 0; ny < needle.height; ny += step) {
     const needleRow = ny * needle.width;
     const haystackRow = (offsetY + ny) * haystack.width;
@@ -24,9 +23,13 @@ function meanDifference(haystack: Bitmap, needle: Bitmap, offsetX: number, offse
       const needleIndex = (needleRow + nx) * 3;
       const haystackIndex = (haystackRow + offsetX + nx) * 3;
       total += Math.abs(needle.rgb[needleIndex]! - haystack.rgb[haystackIndex]!) + Math.abs(needle.rgb[needleIndex + 1]! - haystack.rgb[haystackIndex + 1]!) + Math.abs(needle.rgb[needleIndex + 2]! - haystack.rgb[haystackIndex + 2]!);
-      samples += 3;
     }
   }
+  // 3 channels × the exact inner-iteration count: ceil(h/step) rows × ceil(w/step) cols. No continue/break skips an
+  // iteration, so this equals the running `samples += 3` accumulator for every (h, w, step≥1) — computed once instead
+  // of per pixel (drops one add from the hot loop). The integer value, hence `total / samples`, is bit-identical, and
+  // an empty loop (h=0 or w=0) still yields samples=0 → 255 exactly as before.
+  const samples = 3 * Math.ceil(needle.height / step) * Math.ceil(needle.width / step);
   return samples > 0 ? total / samples : 255;
 }
 
@@ -159,16 +162,17 @@ export function locateColor(rgb: { r: number; g: number; b: number }, tolerance 
 export function frameDifference(a: Bitmap, b: Bitmap, step = 1): number {
   if (a.width !== b.width || a.height !== b.height) return 255;
   let total = 0;
-  let samples = 0;
   const stride = a.width * 3;
   for (let y = 0; y < a.height; y += step) {
     const row = y * stride;
     for (let x = 0; x < a.width; x += step) {
       const index = row + x * 3;
       total += Math.abs(a.rgb[index]! - b.rgb[index]!) + Math.abs(a.rgb[index + 1]! - b.rgb[index + 1]!) + Math.abs(a.rgb[index + 2]! - b.rgb[index + 2]!);
-      samples += 3;
     }
   }
+  // 3 × ceil(h/step) × ceil(w/step) — the exact inner-iteration count, computed once instead of accumulated per pixel
+  // (bit-identical divisor; same h=0/w=0 → 255 guard). Mirrors meanDifference; output pinned byte-stable by test/visual-idle.test.ts.
+  const samples = 3 * Math.ceil(a.height / step) * Math.ceil(a.width / step);
   return samples > 0 ? total / samples : 255;
 }
 
