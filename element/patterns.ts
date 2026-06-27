@@ -723,8 +723,11 @@ export function getSelectedText(ptr: bigint): string {
         if (vcall(array, SLOT.GetElement, [FFIType.i32, FFIType.ptr], [index, rangeOut.ptr!]) !== S_OK) continue;
         const range = rangeOut.readBigUInt64LE(0);
         if (range === 0n) continue;
-        if (vcall(range, SLOT.GetText, [FFIType.i32, FFIType.ptr], [-1, textOut.ptr!]) === S_OK) parts.push(decodeBstr(textOut.readBigUInt64LE(0)));
-        comRelease(range);
+        try {
+          if (vcall(range, SLOT.GetText, [FFIType.i32, FFIType.ptr], [-1, textOut.ptr!]) === S_OK) parts.push(decodeBstr(textOut.readBigUInt64LE(0)));
+        } finally {
+          comRelease(range); // release on EVERY exit incl. a torn-down-proxy GetText vcall throw mid-range (was a bare comRelease outside try → leaked the range proxy on the throw path; mirrors readVisibleText/readTable/collectTasks)
+        }
       }
       return parts.join('');
     } finally {
