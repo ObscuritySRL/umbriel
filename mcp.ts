@@ -2477,7 +2477,7 @@ const TOOLS: McpTool[] = [
   {
     name: 'delete_file',
     category: 'fs',
-    description: 'Delete a file, or an EMPTY directory; pass {recursive:true} to delete a directory tree, or {recycle:true} to send it to the Recycle Bin (RECOVERABLE) instead of permanently deleting — recycle is best-effort (a network/removable volume with no Recycle Bin, or an over-quota file, may still hard-delete). Natively, no del/rmdir shell. DESTRUCTIVE — gated behind the "fs" category; restricted to UMBRIEL_FS_ROOT when set.',
+    description: 'Delete a file, or an EMPTY directory; pass {recursive:true} to delete a directory tree, or {recycle:true} to send it to the Recycle Bin (RECOVERABLE) instead of permanently deleting — recycle is best-effort (a network/removable volume with no Recycle Bin, or an over-quota file, may still hard-delete). Natively, no del/rmdir shell. DESTRUCTIVE — restricted to UMBRIEL_FS_ROOT when set.',
     inputSchema: { type: 'object', properties: { path: { type: 'string' }, recursive: { type: 'boolean', description: 'Delete a non-empty directory tree (default false — an empty dir or a file only)' }, recycle: { type: 'boolean', description: 'Send to the Recycle Bin (RECOVERABLE) instead of permanently deleting (default false); best-effort — a volume without a Recycle Bin may still hard-delete' } }, required: ['path'] },
   },
 ];

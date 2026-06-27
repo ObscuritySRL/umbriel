@@ -10,5 +10,5 @@ const mcp = await Bun.file(`${import.meta.dir}/../mcp.ts`).text();
 const toolsBlock = mcp.slice(mcp.indexOf('const TOOLS: McpTool[] = ['), mcp.indexOf('\n];', mcp.indexOf('const TOOLS: McpTool[] = [')));
 
 test('no tool description carries the non-actionable "Gated …" gating boilerplate', () => {
-  expect(toolsBlock).not.toMatch(/\bGated\b/); // catches "Gated behind the … category" AND the "Gated — disabled unless …" variant that slipped past the old literal check
+  expect(toolsBlock).not.toMatch(/\bgated\b/i); // case-insensitive: catches "Gated behind the … category", the "Gated — disabled unless …" variant, AND the lowercase "gated behind the …" that slipped past the capital-G check
 });
