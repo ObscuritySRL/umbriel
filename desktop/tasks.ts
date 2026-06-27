@@ -137,8 +137,12 @@ function walkFolder(service: bigint, folderPath: string, depth: number, tasks: S
             const subOut = Buffer.alloc(8);
             if (vcall(subfolders, TASK_SLOT.Collection_get_Item, [FFIType.ptr, FFIType.ptr], [variant.ptr!, subOut.ptr!]) !== S_OK) continue;
             const subfolder = subOut.readBigUInt64LE(0);
-            const subPath = getBstr(subfolder, TASK_SLOT.ITaskFolder_get_Path);
-            comRelease(subfolder);
+            let subPath: string;
+            try {
+              subPath = getBstr(subfolder, TASK_SLOT.ITaskFolder_get_Path); // getBstr issues a vcall — a torn-down subfolder proxy (folder deleted mid-enumeration) throws the UAF guard
+            } finally {
+              comRelease(subfolder); // release on EVERY exit incl. that throw (was a bare comRelease outside try → leaked the ITaskFolder proxy; mirrors collectTasks/elementArrayNames)
+            }
             if (subPath !== '') walkFolder(service, subPath, depth + 1, tasks);
           }
         }
