@@ -3190,7 +3190,7 @@ const HANDLERS: Record<string, ToolHandler> = {
     const region = regionArg(args);
     const hit = locateColor({ r, g, b }, tolerance, region);
     return hit === null
-      ? errorResult(`find_color: no pixel within ±${tolerance} of rgb(${r},${g},${b})${region ? ' in region' : ' on screen'}`)
+      ? errorResult(`find_color: no pixel within ±${tolerance} of rgb(${r},${g},${b})${region ? ' in region' : ' on screen'} — try a wider tolerance, a larger region, or screen_capture to see what is there`)
       : textResult(`find_color: match at {x:${hit.x}, y:${hit.y}} — click_point {x:${hit.x}, y:${hit.y}} to act.`);
   },
   screenshot_marked: () => {
