@@ -70,7 +70,17 @@ Posted as `ObscuritySRL`, with the owner's approval:
 - Pinned `D:\.bun\install.ps1` to canary-only (`$Version = "canary"` was already hard-set; removed the now-dead semver
   branch, added a comment). umbriel still passes on the new runtime: `tsc` clean, 113/113 unit tests.
 
-## Re-check trigger (when PR #30483 lands in a canary)
+## Re-check trigger — UPDATED 2026-06-27: PR #30483 is CLOSED (dead); watch issue #29102 instead
+
+**Correction (2026-06-27).** PR #30483 is **closed, unmerged** — verified via the GitHub API
+(`state=closed`, `merged=false`, `merged_at=null`, closed 2026-06-26). robobun closed it: it
+*predates Bun's Rust rewrite and modifies Zig / `src/bun.js` sources that no longer exist on `main`
+(now reorganized into `src/jsc`); it cannot merge and needs a from-scratch reimplementation against
+the current tree.* Tracking issue **#29102 stays OPEN**. So the in-process headless path moved from
+"imminent, one maintainer re-trigger away" to **indefinite — no PR in flight**. Empirical re-probe on
+**Bun 1.4.0 (now stable, up from the canary above)** today: `new Bun.WebView(chrome)` still throws
+`ERR_DLOPEN_FAILED`. STOP watching #30483; watch **#29102** for a NEW PR against the Rust/`src/jsc`
+tree, and keep the `bun -e` `ERR_DLOPEN_FAILED` probe below as the empirical gate.
 
 Re-probe with an isolated profile (Chrome single-instances otherwise — a bare launch hands off to a running Chrome and the
 CDP port never opens):
