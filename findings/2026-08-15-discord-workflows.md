@@ -21,6 +21,12 @@ These findings come from the current Discord Electron client and use accessibili
 - `Button "Open sticker picker"` opens stickers. Its search edit is named `Search`.
 - Sticker tiles map through `inspect_point` to a descriptive button such as `Sticker, <name>, <description>` with class `sticker_…`. `click_point` sends immediately. Verify the new message repeats that sticker name and description.
 
+## Generated image attachments
+
+- To paste a generated local PNG exactly like a human, put its absolute path on the clipboard with `copy_files {paths:[...]}` (CF_HDROP), focus the target Discord composer, then press `Control+V`.
+- Verify Discord shows an attachment preview whose accessible name contains the expected filename before pressing Enter. After submission, verify a new message row containing `Image`; this avoids both duplicate sends and accidental upload of the wrong clipboard file.
+- Electron may update the selected DM after the input action returns. If the immediate snapshot still reports the old title, wait briefly and take a fresh snapshot instead of clicking the conversation again.
+
 ## Channel search
 
 - The top search control is a `ComboBox "Search <recipient>"`. Click it, type the query with `submit:false` and input verification, then call `press_key {key:"Enter"}` separately.
