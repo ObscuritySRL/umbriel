@@ -77,6 +77,8 @@ UMBRIEL_PROFILE=full       # everything, including launch/run/file tools
 
 `desktop_snapshot` returns a ref-keyed view — `Button "Five" [ref=e49#3]` — and every action replies with the smallest faithful update: a compact delta when little changed, a pruned snapshot when more did. The model re-grounds without drowning in tokens.
 
+For chronological chats and logs, `desktop_snapshot { root: "Messages in general", tail: 20, maxDepth: 2 }` returns only the newest direct children. This avoids paying for hundreds of old loaded rows before reaching the messages that need a response.
+
 For controlled web editors such as Discord's Slate composer, use the MCP `type` tool with `method: "paste"`, `verify: true`, and `submit: true` (plus `clear: true` only after confirming an existing draft may be replaced). UIA `set_value` can mutate the exposed DOM value without updating the application's internal editor model, so it is not a reliable background-send path. An ambiguous submission is reported as unverified; never retry it blindly.
 
 ## Use it from your code

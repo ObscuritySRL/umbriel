@@ -13,6 +13,9 @@ All notable changes to **umbriel** are documented in this file.
 - The MCP initialization guidance is shorter and Codex-oriented: it leads with the latest-ref workflow, selector-first actions, verified controlled-editor input, and accessibility-first grounding instead of spending prompt tokens on implementation detail.
 - README and AI guidance now include the Codex MCP registration command and distinguish genuinely background-capable posted/semantic input from foreground-gated `SendInput`.
 
+### Added
+- `desktop_snapshot {root, tail:N}` renders only the newest N direct children of a scoped chronological list. Long Discord chats and logs no longer exhaust the response cap on old rows before the agent can see new messages.
+
 ## [1.14.0] - 2026-06-26
 
 ### Fixed

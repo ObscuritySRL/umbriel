@@ -170,7 +170,7 @@ const PROTOCOL_VERSION = '2025-11-25';
 const SUPPORTED_VERSIONS = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
 const SERVER_INFO = { name: 'umbriel', version: '1.14.0' }; // keep in sync with package.json + server.json (scripts/release-check.ts gates this)
 const INSTRUCTIONS =
-  'Drive Windows through UI Automation. Start with list_windows, then attach; attach already returns the current ref-keyed tree. Use each latest ref verbatim. Prefer find_and_act with selectors in dynamic UIs; use desktop_snapshot only to re-ground stale refs or scope a large tree. Prefer semantic invoke/set_value/toggle/scroll to pixels. For controlled web editors such as Discord/Slate, use type with method:"paste", clear:true when appropriate, verify:true, and submit:true. Umbriel verifies a no-own-HWND editor has foreground focus before SendInput, then restores the previous foreground window by default. Never retry an unverified submit blindly. Each action returns the next compact tree or delta; continue from it. Use wait_idle/wait_for after asynchronous changes. press_key and hold_key send focused key input. Use screen_capture/capture_window/OCR only when the accessibility tree cannot answer. inspect_point bridges pixels back to controls; native_tree/msaa_tree cover legacy UI. Real-cursor actions and no-own-HWND text entry need an unlocked desktop; own-HWND posted input and most semantic patterns can work backgrounded. If a tree or capture is unexpectedly empty, call system_status before concluding the control is absent. OS/file tools may be hidden by UMBRIEL_PROFILE.';
+  'Drive Windows through UI Automation. Start with list_windows, then attach; attach already returns the current ref-keyed tree. Use each latest ref verbatim. Prefer find_and_act with selectors in dynamic UIs; use desktop_snapshot only to re-ground stale refs or scope a large tree. For a chat/log list, combine root with tail to read only its newest direct children. Prefer semantic invoke/set_value/toggle/scroll to pixels. For controlled web editors such as Discord/Slate, use type with method:"paste", clear:true when appropriate, verify:true, and submit:true. Umbriel verifies a no-own-HWND editor has foreground focus before SendInput, then restores the previous foreground window by default. Never retry an unverified submit blindly. Each action returns the next compact tree or delta; continue from it. Use wait_idle/wait_for after asynchronous changes. press_key and hold_key send focused key input. Use screen_capture/capture_window/OCR only when the accessibility tree cannot answer. inspect_point bridges pixels back to controls; native_tree/msaa_tree cover legacy UI. Real-cursor actions and no-own-HWND text entry need an unlocked desktop; own-HWND posted input and most semantic patterns can work backgrounded. If a tree or capture is unexpectedly empty, call system_status before concluding the control is absent. OS/file tools may be hidden by UMBRIEL_PROFILE.';
 // Shown instead of INSTRUCTIONS when the policy enables no 'input' category — so the system-prompt guidance never
 // describes action tools that tools/list does not expose (a readonly/restricted profile).
 const INSTRUCTIONS_READONLY =
@@ -880,9 +880,10 @@ async function pollForNewPopup(before: Set<bigint>, attempts: number, ownerProce
   }
 }
 
-function snapshotText(maxDepth?: number, rootName?: string, maxNodes?: number): string {
+function snapshotText(maxDepth?: number, rootName?: string, maxNodes?: number, tail?: number): string {
   const window = requireAttached();
   let root: Element | undefined;
+  if (tail !== undefined && (rootName === undefined || rootName.length === 0)) throw new Error('desktop_snapshot {tail} requires {root} because tail applies to that scoped node\'s direct children');
   if (rootName !== undefined && rootName.length > 0) {
     if (/^e\d+(#\d+)?$/.test(rootName))
       throw new Error(`desktop_snapshot {root} takes a node NAME or automationId, not a [ref] — refs (${rootName}) address controls only on action tools; omit root and use maxDepth, or pass the name/automationId shown for that node`);
@@ -891,7 +892,11 @@ function snapshotText(maxDepth?: number, rootName?: string, maxNodes?: number): 
   }
   try {
     const { header, tree } = rebuildSnapshot(maxDepth, root, maxNodes);
-    const body = renderTree(tree);
+    const tailCount = tail !== undefined ? Math.max(1, Math.min(500, Math.floor(tail))) : undefined;
+    const omitted = tailCount !== undefined ? Math.max(0, tree.children.length - tailCount) : 0;
+    const renderedTree: RefNode = tailCount !== undefined && omitted > 0 ? { ...tree, children: tree.children.slice(-tailCount) } : tree;
+    const body = renderTree(renderedTree);
+    const tailNote = tailCount !== undefined ? `\n(showing the newest ${Math.min(tailCount, tree.children.length)} of ${tree.children.length} direct children${omitted > 0 ? `; ${omitted} older omitted` : ''})` : '';
     lastSnapshotTree = tree;
     // A defensive unscoped re-ground that finds the tree BYTE-IDENTICAL must NOT re-dump it or bump refGen: the
     // structurally identical rebuild reassigned the same ref ids to the same controls, so the model's current-gen
@@ -907,7 +912,7 @@ function snapshotText(maxDepth?: number, rootName?: string, maxNodes?: number): 
     lastSnapshotBody = body;
     refGen += 1; // an explicit re-ground renumbers refs — invalidate any the model still holds
     return stampRefs(
-      `${header}\n${body}${root === undefined ? coldTreeNote(current?.marks.length ?? 0, attached !== null && isMinimized(attached.hWnd), attached !== null && isUipiWalled(attached.hWnd), attached !== null ? cloakReason(attached.hWnd) : 0, maxDepth, attached?.className ?? '') + foregroundNudge() : ''}`,
+      `${header}${tailNote}\n${body}${root === undefined ? coldTreeNote(current?.marks.length ?? 0, attached !== null && isMinimized(attached.hWnd), attached !== null && isUipiWalled(attached.hWnd), attached !== null ? cloakReason(attached.hWnd) : 0, maxDepth, attached?.className ?? '') + foregroundNudge() : ''}`,
     );
   } finally {
     root?.release();
@@ -1715,13 +1720,14 @@ const TOOLS: McpTool[] = [
     name: 'desktop_snapshot',
     category: 'read',
     description:
-      'Capture the attached window as a compact ref-keyed UIA tree (e.g. Button "Five" [ref=e49#1]). Better than a screenshot for acting; every interactable node carries a [ref=eN#G] you pass VERBATIM to action tools. Refs are valid ONLY until the next re-render — a stale-generation ref is rejected, not mis-resolved. maxNodes (default 1500) bounds a HIGH-DENSITY window — a non-virtualized LOB grid / toolbar / icon-wall with thousands of sibling controls — so the walk stays fast; the tree then ends with "(… more omitted; raise maxNodes …)". maxDepth bounds DEPTH only and does NOT bound a flat (wide) tree — use maxNodes for that, or {root} to scope into one subtree.',
+      'Capture the attached window as a compact ref-keyed UIA tree (e.g. Button "Five" [ref=e49#1]). Better than a screenshot for acting; every interactable node carries a [ref=eN#G] you pass VERBATIM to action tools. Refs are valid ONLY until the next re-render — a stale-generation ref is rejected, not mis-resolved. maxNodes (default 1500) bounds a HIGH-DENSITY window — a non-virtualized LOB grid / toolbar / icon-wall with thousands of sibling controls — so the walk stays fast; the tree then ends with "(… more omitted; raise maxNodes …)". maxDepth bounds DEPTH only and does NOT bound a flat (wide) tree — use maxNodes for that, or {root} to scope into one subtree. For chronological chat/log lists, pass root plus tail:N to render only the newest N direct children.',
     inputSchema: {
       type: 'object',
       properties: {
         maxDepth: { type: 'number', description: 'Default 40' },
         maxNodes: { type: 'number', description: 'Default 1500' },
         root: { type: 'string', description: "Re-ground on just one element's subtree (zoom into a large window): the name or automationId of a node from a prior snapshot. Combine with maxDepth/maxNodes." },
+        tail: { type: 'number', description: 'With root, render only its newest N direct children (1–500); ideal for chronological chat/log lists.' },
       },
     },
   },
@@ -2757,7 +2763,15 @@ const HANDLERS: Record<string, ToolHandler> = {
     const ownerNote = ownerInfo !== undefined ? ` (owned by 0x${owner.toString(16)} ${JSON.stringify(ownerInfo.title)} — attach {hWnd:0x${owner.toString(16)}} to return to the parent)` : '';
     return withSnapshot(`attached to ${JSON.stringify(next.name)}${blindSpotNote(next.className)}${ownerNote}`);
   },
-  desktop_snapshot: (args) => textResult(snapshotText(typeof args.maxDepth === 'number' ? args.maxDepth : undefined, typeof args.root === 'string' ? args.root : undefined, typeof args.maxNodes === 'number' ? args.maxNodes : undefined)),
+  desktop_snapshot: (args) =>
+    textResult(
+      snapshotText(
+        typeof args.maxDepth === 'number' ? args.maxDepth : undefined,
+        typeof args.root === 'string' ? args.root : undefined,
+        typeof args.maxNodes === 'number' ? args.maxNodes : undefined,
+        typeof args.tail === 'number' ? args.tail : undefined,
+      ),
+    ),
   find_and_act: async (args) => {
     const action = requireString(args, 'do');
     const baseline = current?.marks.length ?? 0; // captured before the action so an expand can settle for its revealed in-process items
