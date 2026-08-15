@@ -719,7 +719,10 @@ function restoreSyntheticInput(lease: SyntheticInputLease, restore: boolean): st
 }
 
 function readableEditText(element: Element): string {
-  return element.value || element.text();
+  const value = element.value;
+  if (value.length > 0) return value;
+  const text = element.text();
+  return normalizedEditorText(text) === normalizedEditorText(element.name) ? '' : text;
 }
 
 function normalizedEditorText(text: string): string {
@@ -787,7 +790,7 @@ function typeSmart(element: Element, text: string, options: TypeOptions = {}): s
         umbriel.sendKeys('Control+A');
         umbriel.sendKeys('Backspace');
       }
-      if (options.verify === true && !waitForEdit(element, timeoutMs, (value) => value.replace(/[\uFEFF\r\n]/g, '').length === 0)) throw new Error(`clear was injected into ${target}, but its readable value did not become empty within ${timeoutMs}ms — no text was sent`);
+      if (options.verify === true && !waitForEdit(element, timeoutMs, (value) => normalizedEditorText(value).length === 0)) throw new Error(`clear was injected into ${target}, but its readable value did not become empty within ${timeoutMs}ms — no text was sent`);
     }
 
     const beforeInput = readableEditText(element);
@@ -1849,7 +1852,7 @@ const TOOLS: McpTool[] = [
     name: 'type',
     category: 'input',
     description:
-      'Enter text in an editable control. Own-HWND controls use cursor-free WM_CHAR. WinUI/WPF/Chromium editors get a verified foreground lease for SendInput, then the previous window is restored by default. For controlled web editors such as Discord/Slate use method:"paste", verify:true, submit:true; verification refuses an unconfirmed send instead of inviting a duplicate retry. clear:true replaces existing text.',
+      'Enter text in an editable control. Own-HWND controls use cursor-free WM_CHAR. WinUI/WPF/Chromium editors get a verified foreground lease for SendInput, then the previous window is restored by default. For controlled message editors such as Discord/Slate use method:"paste", verify:true, submit:true; verification refuses an unconfirmed send instead of inviting a duplicate retry. Search fields retain their query after Enter, so type them with submit:false, then press_key Enter and verify the results separately. clear:true replaces existing text.',
     inputSchema: {
       type: 'object',
       properties: {

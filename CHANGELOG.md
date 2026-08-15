@@ -8,6 +8,7 @@ All notable changes to **umbriel** are documented in this file.
 - `SendInput` callers now require the exact requested event count instead of silently reporting success after Windows inserted zero or only part of a batch. Clipboard paste also stops before `Ctrl+V` when the clipboard write failed, avoiding accidental paste of stale clipboard contents.
 - MCP `type` now acquires and verifies a short foreground/focus lease before typing into a no-own-HWND Chromium, WPF, or WinUI editor, restores the previous foreground window by default, and can verify text before and after submission. This gives controlled editors such as Discord/Slate an honest paste-and-submit path without claiming that UIA `set_value` updates their internal editor model.
 - Export `activateWindow(hWnd)`, a boolean `SetForegroundWindow` wrapper for callers that need to observe whether Windows accepted an activation request instead of assuming it did.
+- Verified clearing no longer mistakes an empty controlled search field's accessible placeholder for entered text. Placeholder-only Discord GIF/sticker searches can now use `clear:true` without a false timeout.
 
 ### Changed
 - The MCP initialization guidance is shorter and Codex-oriented: it leads with the latest-ref workflow, selector-first actions, verified controlled-editor input, and accessibility-first grounding instead of spending prompt tokens on implementation detail.

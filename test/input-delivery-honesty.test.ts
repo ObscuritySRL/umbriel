@@ -22,3 +22,9 @@ test('verified rich-editor input tolerates accessible emoji aliases without trus
   expect(mcp).toContain('if (actual === normalizedEditorText(beforeInput)) return false;');
   expect(mcp).toContain('editorContainsRequested(value, text, beforeInput)');
 });
+
+test('an empty controlled search field does not mistake its placeholder for content', () => {
+  expect(mcp).toContain("return normalizedEditorText(text) === normalizedEditorText(element.name) ? '' : text;");
+  expect(mcp).toContain('waitForEdit(element, timeoutMs, (value) => normalizedEditorText(value).length === 0)');
+  expect(mcp).toContain('Search fields retain their query after Enter');
+});
