@@ -283,7 +283,7 @@ export function writeClipboard(text: string): boolean {
 /** Set the clipboard to `text` and paste it (Ctrl+V) into the focused control — the reliable, fast
  *  large-text path (no per-character keystrokes). Needs an unlocked, foregrounded desktop. */
 export function paste(text: string): void {
-  writeClipboard(text);
+  if (!writeClipboard(text)) throw new Error('paste: could not set the clipboard text — another app may be holding it open; retry');
   sendKeys('Control+V');
 }
 

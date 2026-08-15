@@ -110,6 +110,14 @@ export function packMouseInput(buffer: Buffer, offset: number, dx: number, dy: n
   buffer.writeBigUInt64LE(0n, offset + 32); // dwExtraInfo @32
 }
 
+/** Inject one complete INPUT batch or fail honestly. SendInput returns the number of events it inserted; a partial
+ *  result is not usable because it can leave a key/button down or deliver only part of a Unicode string. Windows does
+ *  not identify UIPI as the cause, so the error names the two common environmental blockers without fabricating one. */
+function sendInputExact(buffer: Buffer, count: number, action: string): void {
+  const inserted = User32.SendInput(count, buffer.ptr!, INPUT_SIZE);
+  if (inserted !== count) throw new Error(`${action}: SendInput inserted ${inserted}/${count} input events — the desktop may be locked, input may be blocked, or the target may have a higher integrity level (UIPI)`);
+}
+
 /** Type Unicode text into the focused control, code unit by code unit (locale/layout-independent). */
 export function type(text: string): void {
   if (text.length === 0) return;
@@ -123,7 +131,7 @@ export function type(text: string): void {
     packKeyboardInput(buffer, offset, 0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP);
     offset += INPUT_SIZE;
   }
-  User32.SendInput(count, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, count, 'type');
 }
 
 /** Send a key chord like 'Enter', 'Control+S', 'Control+Shift+Tab' to the focused control. */
@@ -143,7 +151,7 @@ export function sendKeys(combo: string): void {
     packKeyboardInput(buffer, offset, event.virtualKey, 0, event.flags);
     offset += INPUT_SIZE;
   }
-  User32.SendInput(sequence.length, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, sequence.length, 'sendKeys');
 }
 
 /**
@@ -156,7 +164,7 @@ export function clickAt(x: number, y: number): void {
   const buffer = Buffer.alloc(2 * INPUT_SIZE);
   packMouseInput(buffer, 0, 0, 0, 0, MOUSEEVENTF_LEFTDOWN);
   packMouseInput(buffer, INPUT_SIZE, 0, 0, 0, MOUSEEVENTF_LEFTUP);
-  User32.SendInput(2, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 2, 'click');
 }
 
 /** The current cursor position in physical screen pixels. */
@@ -177,7 +185,7 @@ export function rightClickAt(x: number, y: number): void {
   const buffer = Buffer.alloc(2 * INPUT_SIZE);
   packMouseInput(buffer, 0, 0, 0, 0, MOUSEEVENTF_RIGHTDOWN);
   packMouseInput(buffer, INPUT_SIZE, 0, 0, 0, MOUSEEVENTF_RIGHTUP);
-  User32.SendInput(2, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 2, 'right-click');
 }
 
 /** Middle-click at a screen point via SendInput. */
@@ -186,7 +194,7 @@ export function middleClickAt(x: number, y: number): void {
   const buffer = Buffer.alloc(2 * INPUT_SIZE);
   packMouseInput(buffer, 0, 0, 0, 0, MOUSEEVENTF_MIDDLEDOWN);
   packMouseInput(buffer, INPUT_SIZE, 0, 0, 0, MOUSEEVENTF_MIDDLEUP);
-  User32.SendInput(2, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 2, 'middle-click');
 }
 
 /** Double left-click at a screen point in one atomic SendInput (down/up/down/up). */
@@ -197,7 +205,7 @@ export function doubleClickAt(x: number, y: number): void {
   packMouseInput(buffer, INPUT_SIZE, 0, 0, 0, MOUSEEVENTF_LEFTUP);
   packMouseInput(buffer, 2 * INPUT_SIZE, 0, 0, 0, MOUSEEVENTF_LEFTDOWN);
   packMouseInput(buffer, 3 * INPUT_SIZE, 0, 0, 0, MOUSEEVENTF_LEFTUP);
-  User32.SendInput(4, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 4, 'double-click');
 }
 
 /** Scroll the wheel `clicks` notches at a screen point (positive = up/right, negative = down/left). */
@@ -205,7 +213,7 @@ export function scrollWheel(x: number, y: number, clicks: number, horizontal = f
   User32.SetCursorPos(x, y);
   const buffer = Buffer.alloc(INPUT_SIZE);
   packMouseInput(buffer, 0, 0, 0, (clicks * WHEEL_DELTA) >>> 0, horizontal ? MOUSEEVENTF_HWHEEL : MOUSEEVENTF_WHEEL);
-  User32.SendInput(1, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 1, 'scroll');
 }
 
 /** Interpolated real-cursor drag from one screen point to another via SendInput: SetCursorPos(from) → LEFTDOWN →
@@ -217,12 +225,12 @@ export function dragTo(fromX: number, fromY: number, toX: number, toY: number, s
   User32.SetCursorPos(fromX, fromY);
   const down = Buffer.alloc(INPUT_SIZE);
   packMouseInput(down, 0, 0, 0, 0, MOUSEEVENTF_LEFTDOWN);
-  User32.SendInput(1, down.ptr!, INPUT_SIZE);
+  sendInputExact(down, 1, 'drag start');
   for (let step = 1; step <= steps; step += 1) User32.SetCursorPos(Math.round(fromX + ((toX - fromX) * step) / steps), Math.round(fromY + ((toY - fromY) * step) / steps));
   User32.SetCursorPos(toX, toY);
   const up = Buffer.alloc(INPUT_SIZE);
   packMouseInput(up, 0, 0, 0, 0, MOUSEEVENTF_LEFTUP);
-  User32.SendInput(1, up.ptr!, INPUT_SIZE);
+  sendInputExact(up, 1, 'drag end');
 }
 
 /** Real-cursor drag along a POLYLINE path (>=2 points) with optional HELD modifiers (Control/Shift/Alt) — the gestures
@@ -240,7 +248,7 @@ export function dragStroke(points: ReadonlyArray<{ x: number; y: number }>, modi
     User32.SetCursorPos(first.x, first.y);
     const down = Buffer.alloc(INPUT_SIZE);
     packMouseInput(down, 0, 0, 0, 0, MOUSEEVENTF_LEFTDOWN);
-    User32.SendInput(1, down.ptr!, INPUT_SIZE);
+    sendInputExact(down, 1, 'drag stroke start');
     for (let index = 1; index < points.length; index += 1) {
       const from = points[index - 1];
       const to = points[index];
@@ -250,7 +258,7 @@ export function dragStroke(points: ReadonlyArray<{ x: number; y: number }>, modi
     User32.SetCursorPos(last.x, last.y);
     const up = Buffer.alloc(INPUT_SIZE);
     packMouseInput(up, 0, 0, 0, 0, MOUSEEVENTF_LEFTUP);
-    User32.SendInput(1, up.ptr!, INPUT_SIZE);
+    sendInputExact(up, 1, 'drag stroke end');
   } finally {
     for (let index = modifiers.length - 1; index >= 0; index -= 1) keyUp(modifiers[index]);
   }
@@ -261,7 +269,7 @@ export function keyDown(name: string): void {
   const keyCode = virtualKeyCode(name);
   const buffer = Buffer.alloc(INPUT_SIZE);
   packKeyboardInput(buffer, 0, keyCode, 0, EXTENDED_KEYS.has(keyCode) ? KEYEVENTF_EXTENDEDKEY : 0);
-  User32.SendInput(1, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 1, 'key down');
 }
 
 /** Release a previously pressed key. */
@@ -269,7 +277,7 @@ export function keyUp(name: string): void {
   const keyCode = virtualKeyCode(name);
   const buffer = Buffer.alloc(INPUT_SIZE);
   packKeyboardInput(buffer, 0, keyCode, 0, KEYEVENTF_KEYUP | (EXTENDED_KEYS.has(keyCode) ? KEYEVENTF_EXTENDEDKEY : 0));
-  User32.SendInput(1, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 1, 'key up');
 }
 
 /** Whether a key is physically down RIGHT NOW (GetAsyncKeyState high bit). Crash-safe input OBSERVATION by polling
@@ -442,7 +450,7 @@ export function mouseDown(x: number, y: number): void {
   User32.SetCursorPos(x, y);
   const buffer = Buffer.alloc(INPUT_SIZE);
   packMouseInput(buffer, 0, 0, 0, 0, MOUSEEVENTF_LEFTDOWN);
-  User32.SendInput(1, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 1, 'mouse down');
 }
 
 /** Release the left mouse button at a screen point. */
@@ -450,5 +458,5 @@ export function mouseUp(x: number, y: number): void {
   User32.SetCursorPos(x, y);
   const buffer = Buffer.alloc(INPUT_SIZE);
   packMouseInput(buffer, 0, 0, 0, 0, MOUSEEVENTF_LEFTUP);
-  User32.SendInput(1, buffer.ptr!, INPUT_SIZE);
+  sendInputExact(buffer, 1, 'mouse up');
 }

@@ -15,7 +15,7 @@ import { clickAt, dragTo as inputDragTo, postText, type as inputType } from '../
 import { type OcrText, ocrBitmap } from '../capture/ocr';
 import { type Bitmap, cropBitmap } from '../capture/screen';
 import { captureWindowLive } from '../capture/wgc';
-import { captureWindowRGB, closeWindow, listWindows, openPath, renderWidgetHandles, screenshot as windowScreenshot, windowForProcess } from './window';
+import { activateWindow, captureWindowRGB, closeWindow, listWindows, openPath, renderWidgetHandles, screenshot as windowScreenshot, windowForProcess } from './window';
 import {
   addToSelection,
   canMove,
@@ -1183,7 +1183,7 @@ export class Window extends Element {
 
   /** Bring the window to the foreground (best-effort; blocked on a locked session). */
   activate(): this {
-    User32.SetForegroundWindow(this.hWnd);
+    activateWindow(this.hWnd);
     return this;
   }
 

@@ -1,5 +1,5 @@
 #!/usr/bin/env bun
-// A zero-dependency stdio MCP server exposing umbriel (Playwright-for-desktop) to Claude and any MCP
+// A zero-dependency stdio MCP server exposing umbriel (Playwright-for-desktop) to ChatGPT/Codex and any MCP
 // client — the substrate an AI uses to drive Windows. Snapshot-first: desktop_snapshot returns a compact
 // ref-keyed UIA tree; action tools target a fresh 'eN' ref and auto-append a new snapshot so the model
 // re-grounds. DRIVE-IN-THE-DARK doctrine: cursor-free UIA invoke/set_value/scroll + posted clicks act on
@@ -16,6 +16,7 @@ import { appendFile, readdir } from 'node:fs/promises';
 import { relative, resolve, sep } from 'node:path';
 
 import {
+  activateWindow,
   capSnapshot,
   captureWindowLive,
   captureWindowRGB,
@@ -169,11 +170,11 @@ const PROTOCOL_VERSION = '2025-11-25';
 const SUPPORTED_VERSIONS = new Set(['2025-11-25', '2025-06-18', '2025-03-26', '2024-11-05']);
 const SERVER_INFO = { name: 'umbriel', version: '1.14.0' }; // keep in sync with package.json + server.json (scripts/release-check.ts gates this)
 const INSTRUCTIONS =
-  'Drive Windows desktop apps via the UI Automation tree — and beyond it. Call list_windows, then attach (by hWnd or exact title — className is reliable only for single-window classes like Shell_TrayWnd, not the Chromium/Electron family) — attach ALREADY returns a ref-keyed tree, so act on those refs directly; call desktop_snapshot only to RE-ground after refs go stale (e.g. Button "Five" [ref=e49#1]); pass that ref VERBATIM (with its #generation tag) to click/invoke/type/toggle/set_value/inspect_element. Refs are valid ONLY for the most recent snapshot — every action returns a fresh one; re-ground from it. A ref from before a re-render is REJECTED (not silently mis-resolved), so always use the refs from the latest snapshot/delta. To stay cheap, an action that changes little returns just a "Δ" delta (the +/-/~ changes, with refs on appeared/renamed) instead of the full tree — your other refs stay valid; for a HIGH-DENSITY window (a non-virtualized LOB grid / toolbar / icon-wall with thousands of sibling controls) pass desktop_snapshot {maxNodes} (default 1500) to bound the walk, or {root} to scope into one subtree. Prefer invoke/set_value/toggle/scroll (cursor-free — they need no focus and work on a minimized, background, occluded, or locked window — for a classic Win32/HWND app: set_value posts WM_SETTEXT, invoke/toggle on a "Button"-class control post BM_CLICK, all focus-clean — the raw UIA Value/Toggle/Invoke pattern would instead STEAL FOREGROUND to the control via the MSAA bridge, so these tools route around it — but a no-own-HWND WinUI/WPF/Electron SUB-control has only that pattern, so its invoke/toggle/set_value WILL raise+focus (un-minimize) its window; the result STRING discloses the steal (⚠) when it happens, so trust the result, not the tool name; a UWP/WinUI store app SUSPENDS its UI tree when minimized or fully backgrounded, so its tree reads empty and posted actions may not land until you restore/raise it) over click. To SEE beyond the attached window (a 2nd monitor, a game/browser, a composited surface, or anything with no window) use screen_capture; to see a SPECIFIC window even when occluded, in the background, or GPU-composited (where a plain screenshot is blank) use capture_window (Windows.Graphics.Capture); turn a pixel into a control with inspect_point. screenshot auto-falls-back PrintWindow → WGC → desktop-region. Read legacy/owner-draw windows with native_tree/msaa_tree. drag and real-cursor clicks move the actual mouse; SendInput-based input (press_key chord, hold_key, drag, and the type/paste fallback for a control with no own HWND) needs an unlocked, foregrounded desktop — the posted cursor-free paths do not: type (WM_CHAR) / paste (WM_PASTE) / press_key {ref} on an own-HWND control, plus set_value/invoke/toggle. launch/run/file tools and manage_window may be disabled by the server policy (UMBRIEL_PROFILE).';
+  'Drive Windows through UI Automation. Start with list_windows, then attach; attach already returns the current ref-keyed tree. Use each latest ref verbatim. Prefer find_and_act with selectors in dynamic UIs; use desktop_snapshot only to re-ground stale refs or scope a large tree. Prefer semantic invoke/set_value/toggle/scroll to pixels. For controlled web editors such as Discord/Slate, use type with method:"paste", clear:true when appropriate, verify:true, and submit:true. Umbriel verifies a no-own-HWND editor has foreground focus before SendInput, then restores the previous foreground window by default. Never retry an unverified submit blindly. Each action returns the next compact tree or delta; continue from it. Use wait_idle/wait_for after asynchronous changes. press_key and hold_key send focused key input. Use screen_capture/capture_window/OCR only when the accessibility tree cannot answer. inspect_point bridges pixels back to controls; native_tree/msaa_tree cover legacy UI. Real-cursor actions and no-own-HWND text entry need an unlocked desktop; own-HWND posted input and most semantic patterns can work backgrounded. If a tree or capture is unexpectedly empty, call system_status before concluding the control is absent. OS/file tools may be hidden by UMBRIEL_PROFILE.';
 // Shown instead of INSTRUCTIONS when the policy enables no 'input' category — so the system-prompt guidance never
 // describes action tools that tools/list does not expose (a readonly/restricted profile).
 const INSTRUCTIONS_READONLY =
-  'INSPECT Windows desktop apps via the UI Automation tree — READ-ONLY under the current server policy: only inspection/capture tools are exposed, NO action/input tools (set UMBRIEL_PROFILE=safe or full to enable acting). Call list_windows, then attach (by hWnd or exact title — className is reliable only for single-window classes like Shell_TrayWnd), then desktop_snapshot for a ref-keyed tree (e.g. Button "Five" [ref=e49#1]); inspect_element {ref} reads a control\'s full live state, read_table reads a data grid, list_views its view modes, find_text finds text. To SEE: screen_capture (any monitor/region), capture_window (a specific occluded/GPU window via Windows.Graphics.Capture), inspect_point (pixel → control), screenshot (PrintWindow → WGC → desktop-region). Read legacy/owner-draw windows with native_tree/msaa_tree; list monitors/processes.';
+  'Inspect Windows through UI Automation; this server policy exposes no action/input tools. Start with list_windows, then attach; attach already returns the current ref-keyed tree. Use desktop_snapshot only to re-ground stale refs or scope a large tree. inspect_element reads full live state; read_table handles grids and find_text searches readable text. Use screen_capture/capture_window only when the accessibility tree cannot answer, inspect_point to bridge pixels back to controls, and native_tree/msaa_tree for legacy UI. If a tree or capture is unexpectedly empty, call system_status before concluding the control is absent. Set UMBRIEL_PROFILE=safe or full to enable acting.';
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
@@ -675,6 +676,149 @@ function foregroundNudge(): string {
     return `\n\n⚠ a MODAL dialog owned by this window is blocking it (the window is disabled) and it is NOT in the foreground — the snapshot above is the blocked parent: ${info !== undefined ? JSON.stringify(info.title) : '(untitled)'} [hWnd=0x${modal.toString(16)}] — attach {hWnd} to drive it.`;
   }
   return '';
+}
+
+interface SyntheticInputLease {
+  previousForeground: bigint;
+  target: bigint;
+}
+
+/** Acquire the foreground + exact UIA focus a no-own-HWND control needs before SendInput. SetForegroundWindow is
+ *  policy-restricted by Windows, so success means the observable foreground and HasKeyboardFocus both agree — never
+ *  merely that the request was attempted. */
+function acquireSyntheticInput(element: Element): SyntheticInputLease {
+  const target = requireAttached().hWnd;
+  const previousForeground = foregroundWindow();
+  if (isMinimized(target)) restoreWindow(target);
+  element.focus();
+  if (foregroundWindow() !== target) {
+    activateWindow(target);
+    const foregroundDeadline = Date.now() + 800;
+    while (foregroundWindow() !== target && Date.now() < foregroundDeadline) Bun.sleepSync(25);
+    element.focus();
+  }
+  const focusDeadline = Date.now() + 800;
+  while ((foregroundWindow() !== target || element.getProperty(PropertyId.HasKeyboardFocus) !== true) && Date.now() < focusDeadline) Bun.sleepSync(25);
+  if (foregroundWindow() !== target || element.getProperty(PropertyId.HasKeyboardFocus) !== true)
+    throw new Error(
+      `cannot safely inject synthetic input into ${named(element)}: Windows did not make the attached window foreground with keyboard focus (target=0x${target.toString(16)}, foreground=0x${foregroundWindow().toString(16)}). The desktop may be locked, a menu may be active, or Windows foreground-lock may have denied activation; no keys were sent.`,
+    );
+  return { previousForeground, target };
+}
+
+/** Return focus after a short synthetic-input lease. A failed restoration is disclosed but does not turn a completed
+ *  write into an error. */
+function restoreSyntheticInput(lease: SyntheticInputLease, restore: boolean): string {
+  if (!restore || lease.previousForeground === 0n || lease.previousForeground === lease.target || !isWindow(lease.previousForeground)) return '';
+  activateWindow(lease.previousForeground);
+  const deadline = Date.now() + 500;
+  while (foregroundWindow() !== lease.previousForeground && Date.now() < deadline) Bun.sleepSync(25);
+  return foregroundWindow() === lease.previousForeground
+    ? `; restored the previous foreground window 0x${lease.previousForeground.toString(16)}`
+    : `; ⚠ could not restore the previous foreground window 0x${lease.previousForeground.toString(16)} (current foreground=0x${foregroundWindow().toString(16)})`;
+}
+
+function readableEditText(element: Element): string {
+  return element.value || element.text();
+}
+
+function normalizedEditorText(text: string): string {
+  return text.normalize('NFKC').replace(/\uFEFF/g, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Chromium exposes rich-editor emoji as accessible aliases such as `:wink:` instead of the pasted Unicode glyph.
+ *  Verify the surrounding normalized text segments in order, and require the editor to differ from its pre-input
+ *  value, so a pre-existing copy of the same text cannot create a false success. */
+function editorContainsRequested(value: string, requested: string, beforeInput: string): boolean {
+  const actual = normalizedEditorText(value);
+  if (actual === normalizedEditorText(beforeInput)) return false;
+  const exact = normalizedEditorText(requested);
+  if (exact.length > 0 && actual.includes(exact)) return true;
+  const parts = requested
+    .split(/[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u200D]+/gu)
+    .map(normalizedEditorText)
+    .filter((part) => part.length > 0);
+  if (parts.length === 0) return actual.length > 0;
+  let offset = 0;
+  for (const part of parts) {
+    const index = actual.indexOf(part, offset);
+    if (index < 0) return false;
+    offset = index + part.length;
+  }
+  return true;
+}
+
+function waitForEdit(element: Element, timeoutMs: number, predicate: (text: string) => boolean): boolean {
+  const deadline = Date.now() + timeoutMs;
+  do {
+    if (predicate(readableEditText(element))) return true;
+    Bun.sleepSync(40);
+  } while (Date.now() < deadline);
+  return predicate(readableEditText(element));
+}
+
+interface TypeOptions {
+  clear?: boolean;
+  method?: 'keys' | 'paste';
+  restoreForeground?: boolean;
+  submit?: boolean;
+  timeoutMs?: number;
+  verify?: boolean;
+}
+
+/** Reliable text entry for both HWND controls and foreground-gated WinUI/WPF/Chromium editors. The latter borrow the
+ *  foreground only for the atomic input batch, verify the target before sending, and restore the prior foreground. */
+function typeSmart(element: Element, text: string, options: TypeOptions = {}): string {
+  const target = `${element.controlTypeName} ${JSON.stringify(redactSecrets(element.name))}`;
+  const handle = element.nativeWindowHandle;
+  const method = options.method ?? 'keys';
+  const timeoutMs = Math.max(0, Math.min(10_000, options.timeoutMs ?? 2_000));
+  let lease: SyntheticInputLease | undefined;
+  let restoreNote = '';
+  if (handle === 0n) {
+    if (cursorDenied) throw new Error('this control has no native window handle, so text entry needs foregrounded SendInput — disabled by UMBRIEL_CURSOR=never; use set_value only when the editor is not a controlled contentEditable');
+    lease = acquireSyntheticInput(element);
+  }
+  try {
+    if (options.clear === true) {
+      if (handle !== 0n) {
+        if (!setControlText(handle, '')) throw new Error(`could not clear ${target} with WM_SETTEXT`);
+      } else {
+        umbriel.sendKeys('Control+A');
+        umbriel.sendKeys('Backspace');
+      }
+      if (options.verify === true && !waitForEdit(element, timeoutMs, (value) => value.replace(/[\uFEFF\r\n]/g, '').length === 0)) throw new Error(`clear was injected into ${target}, but its readable value did not become empty within ${timeoutMs}ms — no text was sent`);
+    }
+
+    const beforeInput = readableEditText(element);
+
+    if (method === 'paste') {
+      if (handle !== 0n) {
+        if (!umbriel.writeClipboard(text)) throw new Error('could not set the clipboard text — another app may be holding it open; retry');
+        if (!pasteToControl(handle)) throw new Error(`could not post clipboard text to ${target}`);
+      } else umbriel.paste(text);
+    } else if (handle !== 0n) {
+      if (!postText(handle, text)) throw new Error(`could not post all requested text to ${target}`);
+    } else {
+      umbriel.type(text);
+    }
+
+    if (options.verify === true && text.length > 0 && !waitForEdit(element, timeoutMs, (value) => editorContainsRequested(value, text, beforeInput)))
+      throw new Error(`text input was injected into ${target}, but its readable value did not contain the requested ${text.length} characters within ${timeoutMs}ms — submit was NOT pressed`);
+
+    if (options.submit === true) {
+      if (handle !== 0n) {
+        if (!postKey(handle, 'Enter')) throw new Error(`could not post Enter to ${target}`);
+      } else {
+        umbriel.sendKeys('Enter');
+      }
+      if (options.verify === true && text.length > 0 && !waitForEdit(element, timeoutMs, (value) => !editorContainsRequested(value, text, beforeInput)))
+        throw new Error(`Enter was injected into ${target}, but its readable value still contains the requested text after ${timeoutMs}ms — submission could not be verified; do not retry blindly`);
+    }
+  } finally {
+    if (lease !== undefined) restoreNote = restoreSyntheticInput(lease, options.restoreForeground !== false);
+  }
+  return `${method === 'paste' ? 'pasted' : 'typed'} ${text.length} chars into ${target}${options.clear === true ? ' after clearing it' : ''}${options.verify === true ? ' (verified)' : ''}${options.submit === true ? ' and pressed Enter' : ''}${lease !== undefined ? ` via a verified foreground lease${restoreNote}` : ' cursor-free'}`;
 }
 
 /** A snapshot of the top-level window set — used to tell which untitled popup an action just opened. */
@@ -1231,18 +1375,7 @@ function act(element: Element, action: string, text: string | undefined, submit 
   if (action === 'click') return `${clickElement(element, 'left', false, false)} ${target}`;
   if (action === 'focus') return element.focus(), `focused ${target}`; // UIA SetFocus — cursor-free, no SendInput, so never gated
   if (action === 'type') {
-    // Mirror the dedicated `type` tool: cursor-free WM_CHAR to an own-HWND control; SendInput only for a no-own-HWND
-    // sub-control. submit presses Enter after (the dedicated type tool's `submit`, which the selector idioms dropped).
-    const handle = element.nativeWindowHandle;
-    if (handle !== 0n) {
-      postText(handle, text ?? '');
-      if (submit) postKey(handle, 'Enter');
-      return `typed into ${target} cursor-free${submit ? ' and pressed Enter' : ''}`;
-    }
-    if (cursorDenied) throw new Error('this control has no native window handle for the cursor-free WM_CHAR path, so type would need SendInput — disabled by UMBRIEL_CURSOR=never; use set_value (ValuePattern) to write it cursor-free');
-    element.type(text ?? '');
-    if (submit) umbriel.sendKeys('Enter');
-    return `typed into ${target}${submit ? ' and pressed Enter' : ''}`;
+    return typeSmart(element, text ?? '', { submit });
   }
   if (action === 'set_value') return patternAction('set_value', () => `${setValueSmart(element, text ?? '')} ${target}`);
   if (action === 'toggle') return patternAction('toggle', () => `${toggleSmart(element)} ${target}`);
@@ -1701,10 +1834,20 @@ const TOOLS: McpTool[] = [
     name: 'type',
     category: 'input',
     description:
-      'Type Unicode text into an editable control. Cursor-free (WM_CHAR) when the control has its own window handle; falls back to SendInput keystrokes for a WinUI/WPF/Chromium sub-control with no own HWND. Prefer set_value when the control supports the Value pattern.',
+      'Enter text in an editable control. Own-HWND controls use cursor-free WM_CHAR. WinUI/WPF/Chromium editors get a verified foreground lease for SendInput, then the previous window is restored by default. For controlled web editors such as Discord/Slate use method:"paste", verify:true, submit:true; verification refuses an unconfirmed send instead of inviting a duplicate retry. clear:true replaces existing text.',
     inputSchema: {
       type: 'object',
-      properties: { element: { type: 'string', description: ELEMENT_DESC }, ref: { type: 'string', description: REF_DESC }, text: { type: 'string' }, submit: { type: 'boolean', description: 'Press Enter after' } },
+      properties: {
+        element: { type: 'string', description: ELEMENT_DESC },
+        ref: { type: 'string', description: REF_DESC },
+        text: { type: 'string' },
+        method: { type: 'string', enum: ['keys', 'paste'], description: 'keys (default), or paste for atomic controlled-editor input' },
+        clear: { type: 'boolean', description: 'Clear the control before entering text' },
+        submit: { type: 'boolean', description: 'Press Enter after the text is present' },
+        verify: { type: 'boolean', description: 'Verify text appears before Enter and leaves the editor after submit; default false' },
+        restoreForeground: { type: 'boolean', description: 'Restore the prior foreground window after synthetic input; default true' },
+        timeout: { type: 'number', description: 'Verification timeout in ms (default 2000, max 10000)' },
+      },
       required: ['ref', 'text'],
     },
   },
@@ -2779,19 +2922,17 @@ const HANDLERS: Record<string, ToolHandler> = {
     const element = resolveRef(requireString(args, 'ref'));
     const text = requireString(args, 'text'); // read BEFORE the actionability gate so a missing-text SCHEMA error is not masked by the disabled-control steer
     assertActionable(element, 'type'); // Playwright-class enabled gate — typing into a disabled field writes nothing
-    const target = named(element);
-    const handle = element.nativeWindowHandle;
-    if (handle !== 0n) {
-      // Cursor-free: WM_CHAR per code unit to the control's OWN HWND — no focus, works minimized/background/locked (the SendInput path can't).
-      postText(handle, text);
-      if (args.submit === true) postKey(handle, 'Enter');
-      return withSnapshot(`typed into ${target} cursor-free${args.submit === true ? ' and pressed Enter' : ''}`);
-    }
-    // WinUI/WPF/Chromium sub-control with no own HWND — only SendInput reaches it (needs an unlocked, foregrounded desktop).
-    if (cursorDenied) return errorResult('this control has no native window handle for the cursor-free WM_CHAR path, so type would need SendInput — disabled by UMBRIEL_CURSOR=never. Use set_value (ValuePattern) to write it cursor-free.');
-    element.type(text);
-    if (args.submit === true) umbriel.sendKeys('Enter');
-    return withSnapshot(`typed into ${target}${args.submit === true ? ' and pressed Enter' : ''}`);
+    const method = args.method === 'paste' ? 'paste' : 'keys';
+    return withSnapshot(
+      typeSmart(element, text, {
+        clear: args.clear === true,
+        method,
+        restoreForeground: args.restoreForeground !== false,
+        submit: args.submit === true,
+        timeoutMs: typeof args.timeout === 'number' ? args.timeout : undefined,
+        verify: args.verify === true,
+      }),
+    );
   },
   set_value: (args) => {
     const element = resolveRef(requireString(args, 'ref'));

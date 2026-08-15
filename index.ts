@@ -16,10 +16,11 @@ import { captureScreen, pixelColor, screenshotScreen } from './capture/screen';
 import { windowTree } from './desktop/spy';
 import { serialize } from './element/tree';
 import { captureWindowLive } from './capture/wgc';
-import { listWindows } from './element/window';
+import { activateWindow, listWindows } from './element/window';
 
 /** The Playwright-for-desktop facade: attach to a window, then find/waitFor/act/serialize. */
 export const umbriel = {
+  activateWindow,
   attach,
   captureScreen,
   captureWindowLive,
@@ -166,6 +167,7 @@ export { type NativeWindow, renderWindowTree, windowStyles, windowTree } from '.
 export { countNodes, estimateTokens, serialize, type SerializeOptions, type UiaNode } from './element/tree';
 export { captureWindowLive, dispose as disposeWgc, wgcAvailable } from './capture/wgc';
 export {
+  activateWindow,
   captureWindowRGB,
   cloakReason,
   closeWindow,

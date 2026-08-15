@@ -4,7 +4,7 @@
 
 # Umbriel · A set of hands for your AI agent — and Playwright for the Windows desktop
 
-Drive any Windows app through five layers — fall back to OCR and pixel-matching when there's no other way in, see and manage windows even when they're hidden, send cursor-free synthetic input, target controls by name and role, and reach past the GUI to drive the OS itself: processes, services, the registry, scheduled tasks, the firewall, network, power, displays, disks, environment, and the event log. Built by Claude, for Claude — but any AI agent over MCP can use it.
+Drive any Windows app through five layers — fall back to OCR and pixel-matching when there's no other way in, see and manage windows even when they're hidden, use cursor-free semantic or posted input where Windows permits it, target controls by name and role, and reach past the GUI to drive the OS itself: processes, services, the registry, scheduled tasks, the firewall, network, power, displays, disks, environment, and the event log. Built for ChatGPT/Codex, Claude, and any AI agent that speaks MCP.
 
 [![npm](https://img.shields.io/npm/v/umbriel?color=8b5cf6&label=umbriel)](https://www.npmjs.com/package/umbriel)
 [![license](https://img.shields.io/badge/license-MIT-blue)](./LICENSE)
@@ -21,7 +21,7 @@ Umbriel drives the Windows desktop the way a person would — through whatever c
 1. **Pixels & OCR** — when an app exposes no tree at all (canvas, custom-draw, games), fall back to full-screen capture, template matching, and text recognition.
 2. **Semantic control** — read the UI Automation tree an app exposes and target controls by *name* and *role*, not coordinates. Survives the DPI, layout, and theme changes that shatter pixel scripts.
 3. **Sight & window control** — capture the *live* pixels of any window (even fully GPU-composited or occluded), inspect raw HWND hierarchies, and move, raise, or size windows.
-4. **Synthetic input** — cursor-free clicks, keystrokes, and text that land on background, locked, minimized, or occluded windows without stealing focus.
+4. **Input routing** — semantic UIA and posted-message input for background-capable controls, with a verified `SendInput` fallback only when an HWND-less editor or real pointer gesture actually needs the foreground.
 5. **Drive the OS, not just GUIs** — when the task *is* the machine, act on it directly: read and write the registry (values *and* keys), list / kill / suspend / reprioritize processes, query / start / stop / configure services, create / delete / enumerate scheduled tasks, read the firewall rules, enumerate network adapters and live connections, drive session power (lock / restart / sleep / hibernate), list volumes and free space, get and set environment variables, read the event log, and read *or change* the display mode — all native, no PowerShell or shelling out.
 
 Underneath it's a few kilobytes of TypeScript on Bun's built-in FFI — no Appium server, no `.NET`, no `node-gyp`, no prebuilt binaries.
@@ -36,13 +36,19 @@ That's the entire install story. No build step, nothing to compile.
 
 ## Built for AI agents
 
-This is what Umbriel is *for*. Hand the whole desktop to an agent with one line:
+This is what Umbriel is *for*. Register the published server with Codex (ChatGPT desktop, CLI, and the IDE share this configuration):
+
+```bash
+codex mcp add umbriel -- bunx umbriel
+```
+
+Or register it with Claude:
 
 ```bash
 claude mcp add umbriel -- bunx umbriel
 ```
 
-Any MCP-speaking agent then drives Windows cursor-free, ~15 ms per step, even on a background, locked, minimized, or occluded window. No mouse hijacking, no screenshots required. It was built by Claude, for Claude, but nothing about it is Claude-specific — any AI over MCP works.
+Any MCP-speaking agent can then ground itself in the accessibility tree in ~15 ms per step and use semantic, posted-message, synthetic-input, or pixel fallback as the target requires. Most classic controls remain driveable backgrounded; a no-own-HWND Chromium/WPF/WinUI editor needs a brief unlocked foreground lease for real input. Umbriel verifies that destination before injecting, can verify the resulting editor state, and restores the previous foreground window by default.
 
 A screenshot agent burns image tokens on every step — then burns them *again* to screenshot its own result, because it can't read state out of pixels. Umbriel maps the whole window to plain text you cache once and reuse across steps, and reads results straight back from that map. Same grounding Microsoft's UFO2 and the OSWorld-Human benchmark recommend (structure first, vision second) — without the bill.
 
@@ -70,6 +76,8 @@ UMBRIEL_PROFILE=full       # everything, including launch/run/file tools
 ```
 
 `desktop_snapshot` returns a ref-keyed view — `Button "Five" [ref=e49#3]` — and every action replies with the smallest faithful update: a compact delta when little changed, a pruned snapshot when more did. The model re-grounds without drowning in tokens.
+
+For controlled web editors such as Discord's Slate composer, use the MCP `type` tool with `method: "paste"`, `verify: true`, and `submit: true` (plus `clear: true` only after confirming an existing draft may be replaced). UIA `set_value` can mutate the exposed DOM value without updating the application's internal editor model, so it is not a reliable background-send path. An ambiguous submission is reported as unverified; never retry it blindly.
 
 ## Use it from your code
 

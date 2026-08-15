@@ -488,6 +488,12 @@ export function foregroundWindow(): bigint {
   return User32.GetForegroundWindow();
 }
 
+/** Ask Windows to activate a top-level window so synthetic keyboard input has a verified destination. Windows may
+ *  refuse this under its foreground-lock rules; callers must check the boolean instead of assuming input was retargeted. */
+export function activateWindow(hWnd: bigint): boolean {
+  return hWnd !== 0n && User32.SetForegroundWindow(hWnd) !== 0;
+}
+
 /** True when `owner` is somewhere in `window`'s OWNER chain (GetWindow GW_OWNER). This is the reliable test for an owned
  *  top-level dialog — GetAncestor(GA_ROOTOWNER) is NOT: it walks GetParent, which returns 0 for an owned (non-child)
  *  window, so it yields the window itself and never matches the owner. The bounded loop guards a pathological cycle. */
