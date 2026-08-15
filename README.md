@@ -79,6 +79,8 @@ UMBRIEL_PROFILE=full       # everything, including launch/run/file tools
 
 For chronological chats and logs, `desktop_snapshot { root: "Messages in general", tail: 20, maxDepth: 2 }` returns only the newest direct children. This avoids paying for hundreds of old loaded rows before reaching the messages that need a response.
 
+When the window handle is already known, the same scope can be applied on the first call: `attach { hWnd: "0x123", root: "Messages in general", tail: 20, maxDepth: 2 }`. Use `maxDepth`/`maxNodes` without `root` to bound any other large initial tree.
+
 For controlled web editors such as Discord's Slate composer, use the MCP `type` tool with `method: "paste"`, `verify: true`, and `submit: true` (plus `clear: true` only after confirming an existing draft may be replaced). UIA `set_value` can mutate the exposed DOM value without updating the application's internal editor model, so it is not a reliable background-send path. An ambiguous submission is reported as unverified; never retry it blindly.
 
 ## Use it from your code

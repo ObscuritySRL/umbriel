@@ -13,3 +13,10 @@ test('desktop_snapshot threads tail into snapshotText without changing full snap
   expect(mcp).toContain('lastSnapshotTree = tree;');
   expect(mcp).toContain('showing the newest ${Math.min(tailCount, tree.children.length)} of ${tree.children.length} direct children');
 });
+
+test('attach can bound or scope its initial snapshot without a second tool call', () => {
+  expect(mcp).toContain("maxDepth: { type: 'number', description: 'Bound the initial snapshot depth");
+  expect(mcp).toContain("if (rootName !== undefined || tail !== undefined) return textResult(`${message}\\n\\n${snapshotText(maxDepth, rootName, maxNodes, tail)}`)");
+  expect(mcp).toContain('return withSnapshot(message, maxDepth, maxNodes);');
+  expect(mcp).toContain('rebuilt = rebuildSnapshot(maxDepth, undefined, maxNodes);');
+});

@@ -15,6 +15,7 @@ All notable changes to **umbriel** are documented in this file.
 
 ### Added
 - `desktop_snapshot {root, tail:N}` renders only the newest N direct children of a scoped chronological list. Long Discord chats and logs no longer exhaust the response cap on old rows before the agent can see new messages.
+- `attach` accepts `maxDepth`/`maxNodes` and the same `root`/`tail` scoping, avoiding a broad initial tree plus a second snapshot call when the target subtree is already known.
 
 ## [1.14.0] - 2026-06-26
 

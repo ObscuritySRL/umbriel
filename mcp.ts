@@ -1117,11 +1117,11 @@ function originNote(originX: number, originY: number, width: number, height: num
  * ref ids in traversal order, so an appeared/disappeared actionable node shifts them and forces a full
  * re-dump; renames keep the order (and thus the agent's existing refs) stable.
  */
-function withSnapshot(message: string): object {
+function withSnapshot(message: string, maxDepth?: number, maxNodes?: number): object {
   const prior = lastSnapshotTree;
   let rebuilt: { header: string; tree: RefNode };
   try {
-    rebuilt = rebuildSnapshot();
+    rebuilt = rebuildSnapshot(maxDepth, undefined, maxNodes);
   } catch (error) {
     // The action already ran — only the post-action snapshot refresh failed (a transient BuildUpdatedCache
     // race while the view re-renders). Never mask a successful action as an error: report success and tell the
@@ -1710,10 +1710,19 @@ const TOOLS: McpTool[] = [
     name: 'attach',
     category: 'read',
     description:
-      'Attach to a top-level window as the active root for snapshots and actions. Prefer an hWnd from list_windows or an exact title; also accepts a title substring (ambiguous substrings list candidates to pick by hWnd), a className, or a processId. className attaches only to the single VISIBLE window of that class — reliable for single-window classes (e.g. Shell_TrayWnd, the taskbar) but it refuses / asks you to disambiguate the Chromium/Electron family (Discord, Slack, VS Code, Teams, Edge — all Chrome_WidgetWin_1), where it would otherwise grab an invisible helper. Returns a fresh ref-keyed snapshot immediately — act on those refs; no follow-up desktop_snapshot needed.',
+      'Attach to a top-level window as the active root for snapshots and actions. Prefer an hWnd from list_windows or an exact title; also accepts a title substring (ambiguous substrings list candidates to pick by hWnd), a className, or a processId. className attaches only to the single VISIBLE window of that class — reliable for single-window classes (e.g. Shell_TrayWnd, the taskbar) but it refuses / asks you to disambiguate the Chromium/Electron family (Discord, Slack, VS Code, Teams, Edge — all Chrome_WidgetWin_1), where it would otherwise grab an invisible helper. Returns a fresh ref-keyed snapshot immediately — act on those refs; no follow-up desktop_snapshot needed. Use maxDepth/maxNodes to bound a large initial tree, or root plus optional tail to attach and scope a known chat/log subtree in one call.',
     inputSchema: {
       type: 'object',
-      properties: { title: { type: 'string' }, hWnd: { type: ['string', 'number'], description: 'Handle as a decimal/0x-hex string or a JSON number' }, processId: { type: 'number' }, className: { type: 'string' } },
+      properties: {
+        title: { type: 'string' },
+        hWnd: { type: ['string', 'number'], description: 'Handle as a decimal/0x-hex string or a JSON number' },
+        processId: { type: 'number' },
+        className: { type: 'string' },
+        maxDepth: { type: 'number', description: 'Bound the initial snapshot depth (default 40)' },
+        maxNodes: { type: 'number', description: 'Bound the initial snapshot node count (default 1500)' },
+        root: { type: 'string', description: 'Return only one known named/automationId subtree in the initial snapshot' },
+        tail: { type: 'number', description: 'With root, render only its newest N direct children (1–500)' },
+      },
     },
   },
   {
@@ -2761,7 +2770,13 @@ const HANDLERS: Record<string, ToolHandler> = {
     // Empty for the common non-owned window — ~0 tokens (GW_OWNER is 0n), and only when the owner is a live enumerated
     // top-level window (a popup whose owner is gone/unlisted gets no misleading breadcrumb).
     const ownerNote = ownerInfo !== undefined ? ` (owned by 0x${owner.toString(16)} ${JSON.stringify(ownerInfo.title)} — attach {hWnd:0x${owner.toString(16)}} to return to the parent)` : '';
-    return withSnapshot(`attached to ${JSON.stringify(next.name)}${blindSpotNote(next.className)}${ownerNote}`);
+    const message = `attached to ${JSON.stringify(next.name)}${blindSpotNote(next.className)}${ownerNote}`;
+    const maxDepth = typeof args.maxDepth === 'number' ? args.maxDepth : undefined;
+    const maxNodes = typeof args.maxNodes === 'number' ? args.maxNodes : undefined;
+    const rootName = typeof args.root === 'string' ? args.root : undefined;
+    const tail = typeof args.tail === 'number' ? args.tail : undefined;
+    if (rootName !== undefined || tail !== undefined) return textResult(`${message}\n\n${snapshotText(maxDepth, rootName, maxNodes, tail)}`);
+    return withSnapshot(message, maxDepth, maxNodes);
   },
   desktop_snapshot: (args) =>
     textResult(
